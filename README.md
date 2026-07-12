@@ -16,6 +16,8 @@ This repository contains the **AI/ML engineering module** — including all cust
 ---
 
 ## What's Inside
+
+```
 afyametrix/
 ├── api/
 │   └── main.py              # FastAPI backend — 12+ endpoints
@@ -30,17 +32,16 @@ afyametrix/
 │   ├── 03_risk_scoring.ipynb        # Composite risk scoring
 │   ├── 04_forecasting.ipynb         # Prophet time-series forecasting
 │   ├── 05_clustering.ipynb          # K-Means clustering + maps
-│   ├── 06_resource_allocation_narrative.ipynb  # Multilingual narratives
+│   ├── 06_resource_allocation_narrative.ipynb
 │   ├── 07_run_api.ipynb             # API testing
 │   ├── 08_voice_assistant.ipynb     # Voice query interface
-│   └── 09_shap_explainability.ipynb # SHAP model explainability
+│   └── 09_shap_explainability.ipynb # SHAP explainability
 ├── models/saved/            # Trained model files
 ├── outputs/
-│   ├── maps/                # Generated choropleth maps
-│   └── reports/             # Generated situation reports
+│   ├── maps/
+│   └── reports/
 └── utils/                   # Helper functions
-
----
+```
 
 ## AI/ML Models Built
 
