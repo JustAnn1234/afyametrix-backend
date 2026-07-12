@@ -4,3 +4,6 @@ __pycache__
 *.log
 models/saved/
 .ipynb_checkpoints/
+data/processed/africa_health_anomalies.csv
+data/processed/africa_health_risk_scored.csv
+data/raw/africa_health_simulated.csvgit add .
