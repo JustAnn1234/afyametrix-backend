@@ -1,0 +1,9 @@
+alert_type,severity,source_country,source_region,target_country,disease,source_risk_score,spread_probability,cases_at_source,recommended_action,alert_timestamp
+CROSS_BORDER,🟠 HIGH,Ethiopia,Afar,Kenya,Cholera,65.4,55.6,19570,Increase border health monitoring,2026-04-10 08:52
+CROSS_BORDER,🟠 HIGH,Ethiopia,Afar,Sudan,Cholera,65.4,55.6,19570,Increase border health monitoring,2026-04-10 08:52
+CROSS_BORDER,🟠 HIGH,Ethiopia,Afar,Uganda,Cholera,65.4,55.6,19570,Increase border health monitoring,2026-04-10 08:52
+CROSS_BORDER,🟠 HIGH,Ethiopia,Afar,DRC,Cholera,65.4,55.6,19570,Increase border health monitoring,2026-04-10 08:52
+CROSS_BORDER,🟠 HIGH,Ethiopia,Somali Region,Kenya,Cholera,70.8,60.2,23892,Increase border health monitoring,2026-04-10 08:52
+CROSS_BORDER,🟠 HIGH,Ethiopia,Somali Region,Sudan,Cholera,70.8,60.2,23892,Increase border health monitoring,2026-04-10 08:52
+CROSS_BORDER,🟠 HIGH,Ethiopia,Somali Region,Uganda,Cholera,70.8,60.2,23892,Increase border health monitoring,2026-04-10 08:52
+CROSS_BORDER,🟠 HIGH,Ethiopia,Somali Region,DRC,Cholera,70.8,60.2,23892,Increase border health monitoring,2026-04-10 08:52

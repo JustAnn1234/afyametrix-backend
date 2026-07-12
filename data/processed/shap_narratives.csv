@@ -1,0 +1,61 @@
+country,region,disease,risk_score,explanation
+DRC,Goma,Meningitis,80.2,"WHY WAS THIS ALERT GENERATED?
+
+Goma, DRC received a risk score of 80/100 for Meningitis. The primary reason is that cases are growing rapidly week over week (contributing +28.6 points to the score). This was reinforced by the fact that the AI model flagged an unusual statistical pattern.
+
+FACTOR BREAKDOWN:
+  Growth Rate: increased risk by 28.6 points
+  AI Anomaly Signal: increased risk by 14.3 points
+  Disease Severity: increased risk by 5.2 points
+  Healthcare Access Risk: increased risk by 2.2 points
+  Case Volume: increased risk by 0.4 points
+
+CONFIDENCE: The model baseline for an average region is 30/100. This region scores +51 points above baseline."
+Nigeria,Lagos,Dengue,79.5,"WHY WAS THIS ALERT GENERATED?
+
+Lagos, Nigeria received a risk score of 80/100 for Dengue. The primary reason is that cases are growing rapidly week over week (contributing +28.6 points to the score). This was reinforced by the fact that the AI model flagged an unusual statistical pattern.
+
+FACTOR BREAKDOWN:
+  Growth Rate: increased risk by 28.6 points
+  AI Anomaly Signal: increased risk by 12.6 points
+  Case Volume: increased risk by 9.4 points
+  Disease Severity: decreased risk by 0.8 points
+  Healthcare Access Risk: increased risk by 0.2 points
+
+CONFIDENCE: The model baseline for an average region is 30/100. This region scores +50 points above baseline."
+DRC,Kananga,Meningitis,79.0,"WHY WAS THIS ALERT GENERATED?
+
+Kananga, DRC received a risk score of 79/100 for Meningitis. The primary reason is that cases are growing rapidly week over week (contributing +28.6 points to the score). This was reinforced by the fact that the AI model flagged an unusual statistical pattern.
+
+FACTOR BREAKDOWN:
+  Growth Rate: increased risk by 28.6 points
+  AI Anomaly Signal: increased risk by 12.9 points
+  Disease Severity: increased risk by 5.2 points
+  Healthcare Access Risk: increased risk by 2.2 points
+  Case Volume: increased risk by 0.5 points
+
+CONFIDENCE: The model baseline for an average region is 30/100. This region scores +49 points above baseline."
+DRC,Lubumbashi,Cholera,78.9,"WHY WAS THIS ALERT GENERATED?
+
+Lubumbashi, DRC received a risk score of 79/100 for Cholera. The primary reason is that cases are growing rapidly week over week (contributing +28.5 points to the score). This was reinforced by the fact that the AI model flagged an unusual statistical pattern.
+
+FACTOR BREAKDOWN:
+  Growth Rate: increased risk by 28.5 points
+  AI Anomaly Signal: increased risk by 13.0 points
+  Disease Severity: increased risk by 4.2 points
+  Healthcare Access Risk: increased risk by 2.2 points
+  Case Volume: increased risk by 1.4 points
+
+CONFIDENCE: The model baseline for an average region is 30/100. This region scores +49 points above baseline."
+DRC,Mbuji-Mayi,Meningitis,77.7,"WHY WAS THIS ALERT GENERATED?
+
+Mbuji-Mayi, DRC received a risk score of 78/100 for Meningitis. The primary reason is that cases are growing rapidly week over week (contributing +28.6 points to the score). This was reinforced by the fact that the AI model flagged an unusual statistical pattern.
+
+FACTOR BREAKDOWN:
+  Growth Rate: increased risk by 28.6 points
+  AI Anomaly Signal: increased risk by 11.8 points
+  Disease Severity: increased risk by 5.2 points
+  Healthcare Access Risk: increased risk by 2.2 points
+  Case Volume: increased risk by 0.3 points
+
+CONFIDENCE: The model baseline for an average region is 30/100. This region scores +48 points above baseline."

@@ -1,0 +1,69 @@
+country,region,quality_score,completeness_pct,anomaly_rate_pct,data_cv,extreme_growth_pct,quality_grade
+DRC,Bukavu,100.0,100.0,2.7,1.724,0.4,A
+Sudan,Blue Nile,100.0,100.0,3.0,1.619,0.3,A
+Tanzania,Arusha,100.0,100.0,2.9,1.629,0.4,A
+Sudan,Red Sea State,100.0,100.0,2.8,1.696,0.4,A
+Sudan,Omdurman,100.0,100.0,2.9,1.54,0.4,A
+Sudan,Khartoum,100.0,100.0,2.8,1.605,0.5,A
+Sudan,Kassala,100.0,100.0,2.8,1.584,0.5,A
+Sudan,Darfur,100.0,100.0,2.9,1.684,0.4,A
+Senegal,Ziguinchor,100.0,100.0,2.7,1.525,0.5,A
+DRC,Goma,100.0,100.0,2.9,1.626,0.6,A
+Senegal,Thiès,100.0,100.0,3.1,1.562,0.5,A
+Senegal,Tambacounda,100.0,100.0,3.1,1.677,0.5,A
+Senegal,Saint-Louis,100.0,100.0,2.9,1.478,0.4,A
+Senegal,Diourbel,100.0,100.0,2.9,1.777,0.3,A
+Senegal,Dakar,100.0,100.0,2.7,1.63,0.4,A
+Nigeria,Rivers,100.0,100.0,2.9,1.578,0.4,A
+Tanzania,Dar es Salaam,100.0,100.0,2.6,1.668,0.5,A
+Tanzania,Dodoma,100.0,100.0,2.8,1.629,0.3,A
+Tanzania,Mbeya,100.0,100.0,2.8,1.491,0.6,A
+Tanzania,Morogoro,100.0,100.0,2.8,1.556,0.2,A
+Tanzania,Mwanza,100.0,100.0,2.9,1.457,0.6,A
+Tanzania,Zanzibar,100.0,100.0,2.8,1.615,0.3,A
+Uganda,Arua,100.0,100.0,2.7,1.482,0.4,A
+Uganda,Gulu,100.0,100.0,3.0,1.597,0.9,A
+Uganda,Jinja,100.0,100.0,2.8,1.563,0.5,A
+Uganda,Kampala,100.0,100.0,2.9,1.614,0.5,A
+Uganda,Lira,100.0,100.0,3.0,1.557,0.4,A
+Uganda,Mbale,100.0,100.0,3.0,1.622,0.4,A
+Uganda,Mbarara,100.0,100.0,2.7,1.491,0.1,A
+Zambia,Copperbelt,100.0,100.0,2.9,1.477,0.5,A
+Zambia,Eastern Province,100.0,100.0,2.8,1.659,0.4,A
+Zambia,Lusaka,100.0,100.0,3.1,1.604,0.2,A
+Zambia,Northern Province,100.0,100.0,2.8,1.652,0.5,A
+Nigeria,Oyo,100.0,100.0,3.0,1.546,0.5,A
+Nigeria,Lagos,100.0,100.0,3.1,1.521,0.5,A
+Nigeria,Kano,100.0,100.0,2.7,1.499,0.4,A
+Ghana,Northern Region,100.0,100.0,3.0,1.687,0.4,A
+DRC,Kananga,100.0,100.0,2.8,1.489,0.4,A
+DRC,Kinshasa,100.0,100.0,2.7,1.629,0.6,A
+DRC,Kisangani,100.0,100.0,2.9,1.537,0.4,A
+DRC,Lubumbashi,100.0,100.0,2.8,1.564,0.6,A
+DRC,Mbuji-Mayi,100.0,100.0,2.9,1.549,0.6,A
+Ethiopia,Addis Ababa,100.0,100.0,2.6,1.664,0.5,A
+Ethiopia,Afar,100.0,100.0,2.9,1.581,0.6,A
+Ethiopia,Amhara,100.0,100.0,2.8,1.465,0.5,A
+Ethiopia,Oromia,100.0,100.0,2.8,1.433,0.6,A
+Ethiopia,Sidama,100.0,100.0,2.8,1.598,0.3,A
+Ethiopia,Somali Region,100.0,100.0,2.7,1.62,0.5,A
+Ethiopia,Tigray,100.0,100.0,3.0,1.497,0.4,A
+Ghana,Accra,100.0,100.0,2.8,1.651,0.4,A
+Ghana,Kumasi,100.0,100.0,2.9,1.619,0.3,A
+Ghana,Sekondi,100.0,100.0,2.8,1.451,0.5,A
+Nigeria,Kaduna,100.0,100.0,2.7,1.619,0.3,A
+Ghana,Sunyani,100.0,100.0,2.7,1.416,0.5,A
+Ghana,Tamale,100.0,100.0,2.8,1.546,0.4,A
+Ghana,Upper East,100.0,100.0,2.9,1.618,0.4,A
+Kenya,Eldoret,100.0,100.0,2.9,1.72,0.6,A
+Kenya,Garissa,100.0,100.0,2.7,1.566,0.5,A
+Kenya,Kisumu,100.0,100.0,2.7,1.622,0.2,A
+Kenya,Mandera,100.0,100.0,2.9,1.532,0.4,A
+Kenya,Mombasa,100.0,100.0,2.9,1.546,0.4,A
+Kenya,Nairobi,100.0,100.0,2.9,1.605,0.4,A
+Kenya,Nakuru,100.0,100.0,3.0,1.574,0.4,A
+Kenya,Turkana,100.0,100.0,2.9,1.48,0.4,A
+Nigeria,Abuja,100.0,100.0,3.0,1.608,0.3,A
+Nigeria,Anambra,100.0,100.0,2.9,1.417,0.5,A
+Nigeria,Borno,100.0,100.0,2.8,1.555,0.3,A
+Zambia,Southern Province,100.0,100.0,2.8,1.51,0.3,A

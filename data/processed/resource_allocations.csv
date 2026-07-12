@@ -1,0 +1,69 @@
+country,region,cluster_label,risk_score,top_disease,intervention_priority,ambulances,budget_usd,medical_personnel,medicine_kits,test_kits,vaccines
+Ethiopia,Somali Region,🔴 Critical Hotspots,70.8,Cholera,IMMEDIATE,1,49300,5,197,370,1233
+Ethiopia,Afar,🟠 High Burden Zones,65.4,Cholera,URGENT,1,41000,4,164,308,1026
+Senegal,Diourbel,🟢 Stable Regions,54.9,Cholera,ROUTINE,1,27600,3,110,207,689
+Zambia,Northern Province,🟢 Stable Regions,53.9,Meningitis,ROUTINE,1,27400,3,110,206,685
+DRC,Kisangani,🔴 Critical Hotspots,53.6,Meningitis,IMMEDIATE,1,42200,4,169,317,1055
+DRC,Kinshasa,🔴 Critical Hotspots,51.5,Typhoid,IMMEDIATE,1,41400,4,166,311,1036
+Senegal,Thiès,🟠 High Burden Zones,51.3,Meningitis,URGENT,1,32500,3,130,244,812
+Senegal,Tambacounda,🟠 High Burden Zones,50.7,Meningitis,URGENT,1,32200,3,129,242,806
+Zambia,Lusaka,🟡 Emerging Risk Areas,50.6,Cholera,ELEVATED,1,29300,3,117,220,732
+Tanzania,Zanzibar,🟠 High Burden Zones,50.1,Malaria,URGENT,1,33400,3,134,251,836
+Kenya,Kisumu,🟢 Stable Regions,49.4,Dengue,ROUTINE,1,26400,3,106,198,660
+Sudan,Blue Nile,🟠 High Burden Zones,49.1,Malaria,URGENT,1,32700,3,131,245,818
+Tanzania,Mbeya,🟢 Stable Regions,48.7,Malaria,ROUTINE,1,26600,3,107,200,666
+Kenya,Eldoret,🟠 High Burden Zones,48.6,Malaria,URGENT,1,32300,3,129,243,809
+Ghana,Sunyani,🟢 Stable Regions,47.6,Meningitis,ROUTINE,1,25200,3,101,189,631
+Zambia,Southern Province,🟢 Stable Regions,47.2,Typhoid,ROUTINE,1,24900,2,100,187,622
+DRC,Goma,🔴 Critical Hotspots,47.2,Malaria,IMMEDIATE,1,39800,4,159,299,995
+Tanzania,Morogoro,🟢 Stable Regions,46.9,Mpox,ROUTINE,1,26000,3,104,195,649
+Kenya,Nairobi,🟡 Emerging Risk Areas,46.4,Typhoid,ELEVATED,1,28400,3,114,213,710
+Nigeria,Rivers,🟢 Stable Regions,46.3,Typhoid,ROUTINE,1,29900,3,120,225,749
+Kenya,Turkana,🟢 Stable Regions,45.1,Dengue,ROUTINE,1,24800,2,99,186,619
+Nigeria,Kaduna,🟢 Stable Regions,44.5,Meningitis,ROUTINE,1,29300,3,117,220,732
+Ethiopia,Sidama,🔴 Critical Hotspots,44.1,Mpox,IMMEDIATE,1,39300,4,157,295,982
+Nigeria,Borno,🟠 High Burden Zones,42.9,Cholera,URGENT,1,34900,3,140,262,873
+Ethiopia,Oromia,🔴 Critical Hotspots,42.7,Malaria,IMMEDIATE,1,38800,4,155,291,969
+Zambia,Copperbelt,🟢 Stable Regions,42.7,Dengue,ROUTINE,1,23200,2,93,174,580
+Sudan,Khartoum,🔴 Critical Hotspots,42.5,Cholera,IMMEDIATE,1,36500,4,146,274,912
+Uganda,Gulu,🟠 High Burden Zones,42.4,Malnutrition,URGENT,1,30000,3,120,225,750
+Ghana,Northern Region,🟢 Stable Regions,42.3,Meningitis,ROUTINE,1,23200,2,93,174,581
+DRC,Mbuji-Mayi,🔴 Critical Hotspots,41.7,Cholera,IMMEDIATE,1,37700,4,151,283,944
+Kenya,Mandera,🟢 Stable Regions,41.3,Typhoid,ROUTINE,1,23300,2,93,175,583
+Zambia,Eastern Province,🟢 Stable Regions,41.2,Malaria,ROUTINE,1,22600,2,91,170,566
+DRC,Bukavu,🔴 Critical Hotspots,41.0,Malaria,IMMEDIATE,1,37500,4,150,281,937
+Senegal,Ziguinchor,🟢 Stable Regions,40.8,Diarrheal_Disease,ROUTINE,1,22300,2,89,167,556
+Nigeria,Lagos,🟡 Emerging Risk Areas,39.3,Typhoid,ELEVATED,1,30400,3,122,228,761
+Uganda,Jinja,🟢 Stable Regions,39.1,Meningitis,ROUTINE,1,22500,2,90,169,563
+Sudan,Darfur,🔴 Critical Hotspots,38.6,Tuberculosis,IMMEDIATE,1,35000,4,140,263,876
+DRC,Kananga,🔴 Critical Hotspots,38.6,Respiratory_Infections,IMMEDIATE,1,36600,4,146,274,914
+Tanzania,Dodoma,🟢 Stable Regions,38.2,Cholera,ROUTINE,1,22700,2,91,170,567
+Sudan,Omdurman,🔴 Critical Hotspots,38.1,Mpox,IMMEDIATE,1,34800,3,139,261,871
+Senegal,Saint-Louis,🟠 High Burden Zones,38.0,Mpox,URGENT,1,27500,3,110,206,687
+Nigeria,Anambra,🟠 High Burden Zones,37.9,Malaria,URGENT,1,33100,3,132,248,826
+Senegal,Dakar,🟢 Stable Regions,37.9,Cholera,ROUTINE,1,21200,2,85,159,529
+Sudan,Kassala,🔴 Critical Hotspots,37.7,Meningitis,IMMEDIATE,1,34700,3,139,260,867
+Uganda,Arua,🟢 Stable Regions,37.4,Malaria,ROUTINE,1,21900,2,87,164,547
+Nigeria,Abuja,🟡 Emerging Risk Areas,37.2,Tuberculosis,ELEVATED,1,29700,3,119,222,741
+Uganda,Mbarara,🟢 Stable Regions,37.1,Typhoid,ROUTINE,1,21800,2,87,163,544
+Nigeria,Oyo,🟠 High Burden Zones,36.9,Cholera,URGENT,1,32700,3,131,245,817
+Ethiopia,Amhara,🟠 High Burden Zones,36.8,Cholera,URGENT,1,30300,3,121,227,757
+Ghana,Kumasi,🟢 Stable Regions,36.6,Meningitis,ROUTINE,1,21100,2,84,158,528
+Ghana,Tamale,🟢 Stable Regions,36.5,Cholera,ROUTINE,1,21100,2,84,158,527
+Ghana,Accra,🟡 Emerging Risk Areas,36.4,Malaria,ELEVATED,1,24200,2,97,181,604
+Uganda,Mbale,🟠 High Burden Zones,36.2,Tuberculosis,URGENT,1,27700,3,111,208,692
+Kenya,Mombasa,🟡 Emerging Risk Areas,35.8,Meningitis,ELEVATED,1,24400,2,98,183,610
+Uganda,Lira,🟢 Stable Regions,35.7,Mpox,ROUTINE,1,21200,2,85,159,531
+Ethiopia,Addis Ababa,🔴 Critical Hotspots,35.4,Cholera,IMMEDIATE,1,36000,4,144,270,901
+Ethiopia,Tigray,🟠 High Burden Zones,35.3,Tuberculosis,URGENT,1,29700,3,119,223,743
+Tanzania,Arusha,🟠 High Burden Zones,34.9,Cholera,URGENT,1,27700,3,111,208,693
+DRC,Lubumbashi,🔴 Critical Hotspots,34.7,Meningitis,IMMEDIATE,1,35100,4,140,263,878
+Uganda,Kampala,🟡 Emerging Risk Areas,34.6,Tuberculosis,ELEVATED,1,23900,2,96,180,599
+Sudan,Red Sea State,🔴 Critical Hotspots,33.9,Meningitis,IMMEDIATE,1,33300,3,133,249,832
+Nigeria,Kano,🔴 Critical Hotspots,33.8,Cholera,IMMEDIATE,1,37800,4,151,283,944
+Tanzania,Mwanza,🟠 High Burden Zones,33.7,Cholera,URGENT,1,27300,3,109,204,682
+Kenya,Garissa,🟢 Stable Regions,32.9,Tuberculosis,ROUTINE,1,20200,2,81,151,504
+Ghana,Upper East,🟢 Stable Regions,32.7,Tuberculosis,ROUTINE,0,19600,2,79,147,491
+Tanzania,Dar es Salaam,🟡 Emerging Risk Areas,32.7,Mpox,ELEVATED,1,23800,2,95,178,594
+Kenya,Nakuru,🟢 Stable Regions,32.3,Mpox,ROUTINE,0,20000,2,80,150,499
+Ghana,Sekondi,🟢 Stable Regions,31.6,Meningitis,ROUTINE,0,19200,2,77,144,481

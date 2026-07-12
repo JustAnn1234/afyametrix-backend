@@ -1,0 +1,16 @@
+country,region,disease,forecast_avg_daily_cases,forecast_max_cases,trend_direction,prophet_mape_pct,ma_mape_pct,model_confidence_pct,prophet_beats_baseline
+DRC,Kananga,Meningitis,27.0,48.0,📈 Increasing,47.9,326.2,99.0,True
+Nigeria,Borno,Cholera,639.0,4163.0,📉 Decreasing,22.2,67.7,99.0,True
+Tanzania,Zanzibar,Cholera,412.0,1502.0,📉 Decreasing,24.8,221.7,99.0,True
+Tanzania,Dar es Salaam,Meningitis,36.0,125.0,📈 Increasing,41.3,147.8,99.0,True
+DRC,Lubumbashi,Cholera,221.0,1294.0,📉 Decreasing,16.3,17.5,84.4,True
+Ethiopia,Sidama,Cholera,435.0,1673.0,📈 Increasing,22.4,25.6,79.2,True
+Nigeria,Lagos,Dengue,655.0,4827.0,📉 Decreasing,23.7,16.9,76.3,False
+DRC,Mbuji-Mayi,Meningitis,21.0,43.0,📈 Increasing,33.8,11.2,66.2,False
+Nigeria,Oyo,Cholera,999.0,4183.0,📉 Decreasing,39.0,39.2,61.1,True
+Senegal,Tambacounda,Cholera,16.0,37.0,📈 Increasing,49.7,47.1,50.3,False
+DRC,Goma,Meningitis,23.0,44.0,📈 Increasing,63.9,29.5,50.0,False
+Senegal,Thiès,Cholera,0.0,24.0,📉 Decreasing,66.3,18.9,50.0,False
+Ethiopia,Oromia,Meningitis,66.0,121.0,📉 Decreasing,86.9,16.0,50.0,False
+Kenya,Turkana,Meningitis,37.0,66.0,📈 Increasing,66.9,56.9,50.0,False
+Sudan,Omdurman,Cholera,311.0,1146.0,📉 Decreasing,66.6,46.6,50.0,False
