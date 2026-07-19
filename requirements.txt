@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+pandas
+numpy
+httpx
+groq
+plotly
+scikit-learn
+prophet
+shap
+python-multipart
+jupyter
