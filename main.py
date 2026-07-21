@@ -61,8 +61,7 @@ app.add_middleware(
 # We load all CSV files once when the server starts.
 # This is called "caching" — much faster than reading
 # files on every single API request.
-
-DATA_PATH = r"C:\Users\hassa\afyametrix\data\processed"
+DATA_PATH = r"C:\Users\admin\afyametrix-backend\data\processed"
 
 def load_data():
     """Load all processed datasets into memory."""
