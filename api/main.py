@@ -13,14 +13,155 @@
 # Your mobile app calls them too.
 # Even the voice assistant calls them.
 
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import os
 import json
+from dotenv import load_dotenv
+from pydantic import BaseModel, EmailStr, Field
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+import uuid
+import random
+import re
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from email_service import send_verification_email, send_password_reset_email
+
+# Load environment variables
+load_dotenv()
+
+# Load environment variables
+load_dotenv()
+
+# Get Groq API key
+GROQ_API_KEY = os.getenv("GROQ_KEY")
+if not GROQ_API_KEY:
+    print("⚠️  WARNING: GROQ_KEY not found in environment variables")
+
+# ========================================
+# AUTHENTICATION CONFIGURATION
+# ========================================
+
+# Security settings
+SECRET_KEY = "afyametrix-secret-key-change-in-production"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 hours
+
+# Password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Security scheme
+security = HTTPBearer()
+
+# In-memory user storage (replace with database in production)
+USERS_DB = {}
+VERIFICATION_CODES = {}  # {email: {"code": "123456", "expires": datetime, "user_data": {}}}
+PASSWORD_RESET_CODES = {}  # {email: {"code": "123456", "expires": datetime}}
+
+# ========================================
+# PYDANTIC MODELS
+# ========================================
+
+class UserRegister(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100)
+    email: EmailStr
+    password: str = Field(..., min_length=6, max_length=100)
+    role: str = Field(..., pattern="^(CHW|Admin|Doctor|Analyst)$")
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class EmailVerification(BaseModel):
+    email: EmailStr
+    code: str = Field(..., pattern="^[0-9]{6}$")
+
+class ForgotPassword(BaseModel):
+    email: EmailStr
+
+class ResetPassword(BaseModel):
+    email: EmailStr
+    code: str = Field(..., pattern="^[0-9]{6}$")
+    new_password: str = Field(..., min_length=6, max_length=100)
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    role: str
+    verified: bool = False
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    user: UserResponse
+
+# ========================================
+# AUTHENTICATION UTILITIES
+# ========================================
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plaintext password against its hash."""
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password: str) -> str:
+    """Hash a password using bcrypt."""
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict) -> str:
+    """Create JWT access token."""
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    """Verify JWT token and return user data."""
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+
+def validate_email(email: str) -> bool:
+    """Validate email format."""
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+def generate_verification_code() -> str:
+    """Generate 6-digit verification code."""
+    return str(random.randint(100000, 999999))
+
+def cleanup_expired_codes():
+    """Remove expired verification codes."""
+    current_time = datetime.utcnow()
+    
+    # Clean verification codes
+    expired_emails = [
+        email for email, data in VERIFICATION_CODES.items()
+        if data["expires"] < current_time
+    ]
+    for email in expired_emails:
+        del VERIFICATION_CODES[email]
+    
+    # Clean password reset codes
+    expired_reset_emails = [
+        email for email, data in PASSWORD_RESET_CODES.items()
+        if data["expires"] < current_time
+    ]
+    for email in expired_reset_emails:
+        del PASSWORD_RESET_CODES[email]
 
 # ========================================
 # APP INITIALIZATION
@@ -49,7 +190,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # In production, replace with your frontend URL
+    allow_origins=["http://localhost:3000"],  # Frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,15 +203,15 @@ app.add_middleware(
 # This is called "caching" — much faster than reading
 # files on every single API request.
 
-DATA_PATH = r"C:\Users\hassa\afyametrix\data\processed"
+DATA_PATH = r"C:\Users\admin\afyametrix-backend\data\processed"
 
 def load_data():
-    """Load all processed datasets into memory."""
+    """Load datasets or create sample data if files don't exist."""
     data = {}
     
     files = {
         'regional_risk':    'regional_risk_summary.csv',
-        'clusters':         'region_clusters.csv',
+        'clusters':         'region_clusters.csv', 
         'forecasts':        'forecast_summary.csv',
         'allocations':      'resource_allocations.csv',
         'cross_border':     'cross_border_alerts.csv',
@@ -82,20 +223,416 @@ def load_data():
         path = os.path.join(DATA_PATH, filename)
         try:
             df = pd.read_csv(path)
-            # Convert date columns
             if 'date' in df.columns:
                 df['date'] = pd.to_datetime(df['date'])
             data[key] = df
             print(f"  ✅ Loaded {filename}: {len(df):,} rows")
-        except Exception as e:
-            print(f"  ⚠️  Could not load {filename}: {e}")
-            data[key] = pd.DataFrame()
+        except Exception:
+            print(f"  📝 Creating sample data for {filename}")
+            data[key] = create_sample_data(key)
     
     return data
+
+def create_sample_data(data_type):
+    """Create sample data for API testing when real data isn't available."""
+    if data_type == 'regional_risk':
+        return pd.DataFrame({
+            'date': pd.to_datetime(['2024-07-19'] * 5),
+            'country': ['Kenya', 'Nigeria', 'Ethiopia', 'Uganda', 'Tanzania'],
+            'region': ['Nairobi', 'Lagos', 'Addis Ababa', 'Kampala', 'Dar es Salaam'],
+            'risk_score': [65.5, 78.2, 45.1, 52.3, 38.9],
+            'total_cases': [1250, 2100, 850, 950, 720],
+            'active_alerts': [2, 3, 1, 1, 0],
+            'top_disease': ['Malaria', 'Cholera', 'TB', 'Malaria', 'Dengue']
+        })
+    elif data_type == 'cross_border':
+        return pd.DataFrame({
+            'source_country': ['Kenya', 'Nigeria'],
+            'target_country': ['Uganda', 'Chad'],
+            'disease': ['Malaria', 'Cholera'],
+            'source_risk_score': [65.5, 78.2],
+            'spread_probability': [75, 85]
+        })
+    elif data_type == 'forecasts':
+        return pd.DataFrame({
+            'country': ['Kenya', 'Nigeria'],
+            'region': ['Nairobi', 'Lagos'],
+            'disease': ['Malaria', 'Cholera'],
+            'forecast_avg_daily_cases': [45, 78],
+            'trend_direction': ['Increasing', 'Decreasing'],
+            'model_confidence_pct': [85, 92]
+        })
+    else:
+        return pd.DataFrame()
 
 print("🔄 Loading AfyaMetrix datasets...")
 DATA = load_data()
 print(f"✅ API ready with {len(DATA)} datasets loaded\n")
+
+# ========================================
+# AUTHENTICATION ENDPOINTS
+# ========================================
+
+@app.post("/api/auth/register", status_code=201, response_model=dict)
+def register_user(user: UserRegister):
+    """
+    Register a new user with email verification.
+    
+    Creates a user account and sends a verification code.
+    User must verify email before they can login.
+    """
+    # Clean up expired codes first
+    cleanup_expired_codes()
+    
+    # Validate email format
+    if not validate_email(user.email):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid email format"
+        )
+    
+    # Check if user already exists
+    if user.email in USERS_DB:
+        raise HTTPException(
+            status_code=409,
+            detail="User with this email already exists"
+        )
+    
+    # Validate password length
+    if len(user.password) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 6 characters long"
+        )
+    
+    # Validate role
+    valid_roles = ["CHW", "Admin", "Doctor", "Analyst"]
+    if user.role not in valid_roles:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Role must be one of: {', '.join(valid_roles)}"
+        )
+    
+    # Generate user ID and verification code
+    user_id = str(uuid.uuid4())
+    verification_code = generate_verification_code()
+    
+    # Store verification code (expires in 10 minutes)
+    VERIFICATION_CODES[user.email] = {
+        "code": verification_code,
+        "expires": datetime.utcnow() + timedelta(minutes=10),
+        "user_data": {
+            "id": user_id,
+            "name": user.name,
+            "email": user.email,
+            "password": get_password_hash(user.password),
+            "role": user.role,
+            "verified": False,
+            "created_at": datetime.utcnow().isoformat()
+        }
+    }
+    
+    # Send verification email
+    email_sent = send_verification_email(user.email, verification_code, user.name)
+    
+    if not email_sent:
+        # Log verification code to console as fallback
+        print(f"📧 FALLBACK: Verification code for {user.email} is {verification_code}")
+        return {
+            "message": "User registered successfully. Email service unavailable - check console for verification code.",
+            "user": {
+                "id": user_id,
+                "name": user.name,
+                "email": user.email,
+                "role": user.role,
+                "verified": False
+            }
+        }
+    
+    return {
+        "message": "User registered successfully. Please check your email for the verification code.",
+        "user": {
+            "id": user_id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+            "verified": False
+        }
+    }
+
+
+@app.post("/api/auth/verify-email", response_model=dict)
+def verify_email(verification: EmailVerification):
+    """
+    Verify user email with 6-digit code.
+    
+    After successful verification, user can login.
+    """
+    # Clean up expired codes first
+    cleanup_expired_codes()
+    
+    # Check if verification code exists
+    if verification.email not in VERIFICATION_CODES:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired verification code"
+        )
+    
+    stored_data = VERIFICATION_CODES[verification.email]
+    
+    # Verify code
+    if stored_data["code"] != verification.code:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid verification code"
+        )
+    
+    # Check if code is expired
+    if stored_data["expires"] < datetime.utcnow():
+        del VERIFICATION_CODES[verification.email]
+        raise HTTPException(
+            status_code=400,
+            detail="Verification code has expired"
+        )
+    
+    # Move user to main database with verified status
+    user_data = stored_data["user_data"]
+    user_data["verified"] = True
+    USERS_DB[verification.email] = user_data
+    
+    # Remove verification code
+    del VERIFICATION_CODES[verification.email]
+    
+    print(f"✅ Email verified successfully for {verification.email}")
+    
+    return {
+        "message": "Email verified successfully"
+    }
+
+
+@app.post("/api/auth/forgot-password", response_model=dict)
+def forgot_password(request: ForgotPassword):
+    """
+    Send password reset code to user's email.
+    
+    If the email exists in the system, sends a 6-digit reset code.
+    """
+    # Clean up expired codes first
+    cleanup_expired_codes()
+    
+    # Validate email format
+    if not validate_email(request.email):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid email format"
+        )
+    
+    # Check if user exists and is verified
+    if request.email not in USERS_DB:
+        # Don't reveal if email exists or not for security
+        return {
+            "message": "If this email is registered, a password reset code has been sent."
+        }
+    
+    user_data = USERS_DB[request.email]
+    if not user_data.get("verified", False):
+        return {
+            "message": "Please verify your email address first before resetting password."
+        }
+    
+    # Generate reset code
+    reset_code = generate_verification_code()
+    
+    # Store reset code (expires in 15 minutes)
+    PASSWORD_RESET_CODES[request.email] = {
+        "code": reset_code,
+        "expires": datetime.utcnow() + timedelta(minutes=15)
+    }
+    
+    # Send reset email
+    email_sent = send_password_reset_email(request.email, reset_code, user_data["name"])
+    
+    if not email_sent:
+        # Log reset code to console as fallback
+        print(f"🔒 FALLBACK: Password reset code for {request.email} is {reset_code}")
+        return {
+            "message": "Password reset requested. Email service unavailable - check console for reset code."
+        }
+    
+    return {
+        "message": "If this email is registered, a password reset code has been sent."
+    }
+
+
+@app.post("/api/auth/reset-password", response_model=dict)
+def reset_password(reset_request: ResetPassword):
+    """
+    Reset user password with verification code.
+    
+    User must provide valid reset code received via email.
+    """
+    # Clean up expired codes first
+    cleanup_expired_codes()
+    
+    # Validate email format
+    if not validate_email(reset_request.email):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid email format"
+        )
+    
+    # Check if reset code exists
+    if reset_request.email not in PASSWORD_RESET_CODES:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired reset code"
+        )
+    
+    stored_code_data = PASSWORD_RESET_CODES[reset_request.email]
+    
+    # Verify reset code
+    if stored_code_data["code"] != reset_request.code:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid reset code"
+        )
+    
+    # Check if code is expired
+    if stored_code_data["expires"] < datetime.utcnow():
+        del PASSWORD_RESET_CODES[reset_request.email]
+        raise HTTPException(
+            status_code=400,
+            detail="Reset code has expired"
+        )
+    
+    # Validate new password
+    if len(reset_request.new_password) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 6 characters long"
+        )
+    
+    # Check if user still exists
+    if reset_request.email not in USERS_DB:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+    
+    # Update password
+    USERS_DB[reset_request.email]["password"] = get_password_hash(reset_request.new_password)
+    
+    # Remove reset code
+    del PASSWORD_RESET_CODES[reset_request.email]
+    
+    print(f"🔒 Password reset successfully for {reset_request.email}")
+    
+    return {
+        "message": "Password reset successfully. You can now login with your new password."
+    }
+
+
+@app.post("/api/auth/login", response_model=TokenResponse)
+def login_user(user_credentials: UserLogin):
+    """
+    Login user and return JWT access token.
+    
+    User must have verified their email before login.
+    """
+    # Validate email format
+    if not validate_email(user_credentials.email):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid email format"
+        )
+    
+    # Check if user exists
+    if user_credentials.email not in USERS_DB:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password"
+        )
+    
+    user_data = USERS_DB[user_credentials.email]
+    
+    # Check if email is verified
+    if not user_data.get("verified", False):
+        raise HTTPException(
+            status_code=401,
+            detail="Please verify your email before logging in"
+        )
+    
+    # Verify password
+    if not verify_password(user_credentials.password, user_data["password"]):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password"
+        )
+    
+    # Create access token
+    access_token = create_access_token(
+        data={"sub": user_credentials.email, "user_id": user_data["id"]}
+    )
+    
+    print(f"✅ User logged in successfully: {user_credentials.email}")
+    
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user=UserResponse(
+            id=user_data["id"],
+            name=user_data["name"],
+            email=user_data["email"],
+            role=user_data["role"],
+            verified=user_data["verified"]
+        )
+    )
+
+
+@app.get("/api/auth/me", response_model=UserResponse)
+def get_current_user(token_data: dict = Depends(verify_token)):
+    """
+    Get current user information from JWT token.
+    
+    Protected endpoint that requires valid JWT token.
+    """
+    email = token_data.get("sub")
+    if email not in USERS_DB:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+    
+    user_data = USERS_DB[email]
+    return UserResponse(
+        id=user_data["id"],
+        name=user_data["name"],
+        email=user_data["email"],
+        role=user_data["role"],
+        verified=user_data["verified"]
+    )
+
+
+# ========================================
+# PROTECTED ENDPOINT EXAMPLE
+# ========================================
+
+@app.get("/api/protected/dashboard")
+def protected_dashboard(token_data: dict = Depends(verify_token)):
+    """
+    Example protected endpoint requiring authentication.
+    
+    Frontend can use this pattern for protected routes.
+    """
+    email = token_data.get("sub")
+    user_id = token_data.get("user_id")
+    
+    return {
+        "message": f"Welcome to protected dashboard, {email}!",
+        "user_id": user_id,
+        "data": "This is protected content",
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
 # Helper: convert DataFrame to clean JSON
 def df_to_json(df, max_rows=None):
