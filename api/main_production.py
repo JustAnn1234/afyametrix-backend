@@ -198,6 +198,17 @@ class PasswordChange(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=6, max_length=100)
 
+class ForgotPassword(BaseModel):
+    email: EmailStr
+
+class ResetPassword(BaseModel):
+    email: EmailStr
+    code: str = Field(..., pattern="^[0-9]{6}$")
+    new_password: str = Field(..., min_length=6, max_length=100)
+
+class ResendVerification(BaseModel):
+    email: EmailStr
+
 class NotificationSettings(BaseModel):
     emailNotifications: bool = True
     smsAlerts: bool = False
@@ -267,20 +278,30 @@ def create_access_token(data: dict) -> str:
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
+        print(f"🔍 DEBUG: Received token: {credentials.credentials[:20]}...")
+        
         payload = jwt.decode(credentials.credentials, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         email: str = payload.get("sub")
         user_id: str = payload.get("user_id")
         
+        print(f"🔍 DEBUG: Decoded payload - email: {email}, user_id: {user_id}")
+        
         if email is None:
+            print("❌ DEBUG: Email is None in token payload")
             raise HTTPException(status_code=401, detail="Invalid authentication credentials")
         
         user = await get_user_by_id(user_id)
+        print(f"🔍 DEBUG: Database lookup result - user found: {user is not None}")
+        
         if not user:
+            print(f"❌ DEBUG: No user found with ID: {user_id}")
             raise HTTPException(status_code=401, detail="User not found")
         
+        print(f"✅ DEBUG: Successfully authenticated user: {user.email}")
         return user
         
-    except JWTError:
+    except JWTError as e:
+        print(f"❌ DEBUG: JWT decode error: {e}")
         raise HTTPException(status_code=401, detail="Invalid authentication credentials")
 
 def generate_verification_code() -> str:
@@ -378,12 +399,22 @@ async def register_user(request: Request, user: UserRegister, background_tasks: 
 async def verify_email(request: Request, verification: EmailVerification):
     cleanup_expired_codes()
     
+    print(f"🔍 DEBUG: Verifying email {verification.email} with code {verification.code}")
+    
     if verification.email not in VERIFICATION_CODES:
+        print(f"❌ DEBUG: Email {verification.email} not found in verification codes")
+        print(f"🔍 DEBUG: Available emails: {list(VERIFICATION_CODES.keys())}")
         raise HTTPException(status_code=400, detail="Invalid or expired verification code")
     
     stored_data = VERIFICATION_CODES[verification.email]
+    stored_code = stored_data["code"]
     
-    if stored_data["code"] != verification.code:
+    print(f"🔍 DEBUG: Stored code: {stored_code}, Received code: {verification.code}")
+    print(f"🔍 DEBUG: Codes match: {stored_code == verification.code}")
+    print(f"🔍 DEBUG: Code expires at: {stored_data['expires']}")
+    print(f"🔍 DEBUG: Current time: {datetime.utcnow()}")
+    
+    if stored_code != verification.code:
         raise HTTPException(status_code=400, detail="Invalid verification code")
     
     if stored_data["expires"] < datetime.utcnow():
@@ -401,6 +432,7 @@ async def verify_email(request: Request, verification: EmailVerification):
     # Create welcome notification
     await database.execute(
         notifications.insert().values(
+            id=str(uuid.uuid4()),
             user_id=user_data["id"],
             type="info",
             title="Welcome to AfyaMetrix!",
@@ -449,6 +481,107 @@ async def get_current_user_info(current_user=Depends(get_current_user)):
         location=current_user.location,
         verified=current_user.verified
     )
+
+@app.post("/api/auth/forgot-password")
+@limiter.limit("3/minute")
+async def forgot_password(request: Request, forgot_data: ForgotPassword, background_tasks: BackgroundTasks):
+    """
+    Send password reset code to user's email.
+    """
+    cleanup_expired_codes()
+    
+    user = await get_user_by_email(forgot_data.email)
+    if not user:
+        # Security: Don't reveal if email exists or not
+        return {"message": "If the email exists, a reset code has been sent"}
+    
+    # Generate reset code
+    reset_code = generate_verification_code()
+    
+    # Store reset code (expires in 15 minutes)
+    PASSWORD_RESET_CODES[forgot_data.email] = {
+        "code": reset_code,
+        "expires": datetime.utcnow() + timedelta(minutes=15),
+        "user_id": str(user.id)
+    }
+    
+    # Send reset email
+    background_tasks.add_task(
+        email_service.send_password_reset_email,
+        forgot_data.email,
+        reset_code,
+        user.name
+    )
+    
+    return {"message": "If the email exists, a reset code has been sent"}
+
+@app.post("/api/auth/reset-password")
+@limiter.limit("5/minute")
+async def reset_password(request: Request, reset_data: ResetPassword):
+    """
+    Reset user password with verification code.
+    """
+    cleanup_expired_codes()
+    
+    if reset_data.email not in PASSWORD_RESET_CODES:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+    
+    stored_data = PASSWORD_RESET_CODES[reset_data.email]
+    
+    if stored_data["code"] != reset_data.code:
+        raise HTTPException(status_code=400, detail="Invalid reset code")
+    
+    if stored_data["expires"] < datetime.utcnow():
+        del PASSWORD_RESET_CODES[reset_data.email]
+        raise HTTPException(status_code=400, detail="Reset code has expired")
+    
+    # Update user password
+    new_password_hash = get_password_hash(reset_data.new_password)
+    await update_user(stored_data["user_id"], {"password": new_password_hash})
+    
+    # Remove reset code
+    del PASSWORD_RESET_CODES[reset_data.email]
+    
+    return {"message": "Password reset successfully"}
+
+@app.post("/api/auth/resend-verification")
+@limiter.limit("3/minute") 
+async def resend_verification(request: Request, resend_data: ResendVerification, background_tasks: BackgroundTasks):
+    """
+    Resend verification code to user's email.
+    """
+    cleanup_expired_codes()
+    
+    # Check if user already exists (and verified)
+    existing_user = await get_user_by_email(resend_data.email)
+    if existing_user and existing_user.verified:
+        raise HTTPException(status_code=400, detail="Email is already verified")
+    
+    # Check if there's a pending verification
+    if resend_data.email not in VERIFICATION_CODES:
+        raise HTTPException(status_code=400, detail="No pending verification found for this email")
+    
+    stored_data = VERIFICATION_CODES[resend_data.email]
+    
+    # Generate new verification code
+    new_verification_code = generate_verification_code()
+    
+    # Update the stored verification data with new code and expiry
+    VERIFICATION_CODES[resend_data.email] = {
+        "code": new_verification_code,
+        "expires": datetime.utcnow() + timedelta(minutes=10),
+        "user_data": stored_data["user_data"]  # Keep original user data
+    }
+    
+    # Send new verification email
+    background_tasks.add_task(
+        email_service.send_verification_email,
+        resend_data.email,
+        new_verification_code,
+        stored_data["user_data"]["name"]
+    )
+    
+    return {"message": "Verification code resent successfully"}
 
 # ========================================
 # USER PROFILE ENDPOINTS

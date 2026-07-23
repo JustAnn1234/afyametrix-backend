@@ -13,11 +13,11 @@ import asyncio
 load_dotenv()
 
 # Email configuration
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USERNAME)
+SMTP_SERVER = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("EMAIL_PORT", "587"))
+SMTP_USERNAME = os.getenv("EMAIL_USERNAME", "")
+SMTP_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
+FROM_EMAIL = os.getenv("EMAIL_FROM", SMTP_USERNAME)
 
 class EmailService:
     def __init__(self):
