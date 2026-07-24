@@ -29,14 +29,14 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 
 # Database
-from database import (
+from api.database import (
     database, connect_db, disconnect_db, 
     users, notifications, cases, dashboard_alerts,
     get_user_by_email, get_user_by_id, create_user, update_user
 )
 
 # Email service
-from email_service import email_service
+from api.email_service import email_service
 
 # Load environment variables
 load_dotenv()
