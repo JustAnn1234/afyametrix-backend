@@ -265,10 +265,17 @@ class CaseResponse(BaseModel):
 # ========================================
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    # Use simple hash comparison for production compatibility
+    import hashlib
+    salt = "afyametrix_salt_2024"
+    plain_hash = hashlib.sha256((plain_password + salt).encode()).hexdigest()
+    return plain_hash == hashed_password
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    # Use SHA256 with salt instead of bcrypt for production compatibility
+    import hashlib
+    salt = "afyametrix_salt_2024"
+    return hashlib.sha256((password + salt).encode()).hexdigest()
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
