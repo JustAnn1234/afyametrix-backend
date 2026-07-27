@@ -351,8 +351,6 @@ async def shutdown():
 @app.post("/api/auth/register", status_code=201)
 @limiter.limit("5/minute")
 async def register_user(request: Request, user: UserRegister, background_tasks: BackgroundTasks):
-    cleanup_expired_codes()
-    
     # Check if user exists
     existing_user = await get_user_by_email(user.email)
     if existing_user:
@@ -362,28 +360,60 @@ async def register_user(request: Request, user: UserRegister, background_tasks: 
     verification_code = generate_verification_code()
     user_id = str(uuid.uuid4())
     
-    # Store verification code in DATABASE (not memory)
-    await database.execute(
-        verification_codes.insert().values(
-            email=user.email,
-            code=verification_code,
-            expires_at=datetime.utcnow() + timedelta(minutes=10),
-            user_data={
-                "id": user_id,
-                "name": user.name,
-                "email": user.email,
-                "password": get_password_hash(user.password),
-                "role": user.role,
-                "location": user.location,
-                "verified": False,
-                "notification_settings": {
-                    "emailNotifications": True,
-                    "smsAlerts": False,
-                    "systemNotifications": True
-                }
-            }
+    user_data = {
+        "id": user_id,
+        "name": user.name,
+        "email": user.email,
+        "password": get_password_hash(user.password),
+        "role": user.role,
+        "location": user.location,
+        "verified": False,
+        "notification_settings": {
+            "emailNotifications": True,
+            "smsAlerts": False,
+            "systemNotifications": True
+        }
+    }
+    
+    # Clean up any existing verification codes for this email first
+    try:
+        await database.execute(
+            verification_codes.delete().where(verification_codes.c.email == user.email)
         )
-    )
+        print(f"🧹 Cleaned existing verification codes for {user.email}")
+    except Exception as e:
+        print(f"⚠️ No existing codes to clean: {str(e)}")
+    
+    try:
+        # Store in database with proper timezone handling
+        from datetime import timezone
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)  # 15 minutes for testing
+        
+        await database.execute(
+            verification_codes.insert().values(
+                email=user.email,
+                code=verification_code,
+                expires_at=expires_at,
+                user_data=user_data
+            )
+        )
+        print("✅ Using database storage for verification codes")
+        
+        # Also store in memory as backup
+        VERIFICATION_CODES[user.email] = {
+            "code": verification_code,
+            "expires": expires_at.replace(tzinfo=None),  # Store as naive datetime for memory
+            "user_data": user_data
+        }
+        
+    except Exception as e:
+        # Fallback to memory storage only
+        VERIFICATION_CODES[user.email] = {
+            "code": verification_code,
+            "expires": datetime.utcnow() + timedelta(minutes=15),
+            "user_data": user_data
+        }
+        print(f"⚠️ Using memory storage only: {str(e)}")
     
     # DEBUG: Log verification code when email fails
     print(f"🔑 DEBUG: Verification code for {user.email}: {verification_code}")
@@ -410,48 +440,109 @@ async def register_user(request: Request, user: UserRegister, background_tasks: 
 @app.post("/api/auth/verify-email")
 @limiter.limit("10/minute")
 async def verify_email(request: Request, verification: EmailVerification):
-    # Get verification data from DATABASE
-    query = verification_codes.select().where(verification_codes.c.email == verification.email)
-    stored_data = await database.fetch_one(query)
-    
     print(f"🔍 DEBUG: Verifying email {verification.email} with code {verification.code}")
     
-    if not stored_data:
+    # Try database first, then memory
+    stored_data = None
+    stored_code = None
+    expires_at = None
+    user_data = None
+    is_from_database = False
+    
+    try:
+        # Try to get verification data from DATABASE
+        query = verification_codes.select().where(verification_codes.c.email == verification.email)
+        db_data = await database.fetch_one(query)
+        
+        if db_data:
+            stored_data = db_data
+            stored_code = db_data.code
+            expires_at = db_data.expires_at
+            user_data = db_data.user_data
+            is_from_database = True
+            print("🔍 DEBUG: Found verification code in database")
+        else:
+            print("🔍 DEBUG: No verification code found in database, checking memory...")
+            
+    except Exception as e:
+        print(f"⚠️ Database lookup failed: {str(e)}")
+    
+    # Fallback to memory storage if database lookup failed or no data found
+    if not stored_data and verification.email in VERIFICATION_CODES:
+        memory_data = VERIFICATION_CODES[verification.email]
+        stored_code = memory_data["code"]
+        expires_at = memory_data["expires"]
+        user_data = memory_data["user_data"]
+        is_from_database = False
+        print("🔍 DEBUG: Found verification code in memory")
+    
+    if not stored_code:
         print(f"❌ DEBUG: Email {verification.email} not found in verification codes")
         # Show available emails for debugging
-        all_codes = await database.fetch_all(verification_codes.select())
-        available_emails = [row.email for row in all_codes]
-        print(f"🔍 DEBUG: Available emails: {available_emails}")
+        try:
+            all_codes = await database.fetch_all(verification_codes.select())
+            available_emails = [row.email for row in all_codes]
+            print(f"🔍 DEBUG: Available emails in DB: {available_emails}")
+        except:
+            pass
+        memory_emails = list(VERIFICATION_CODES.keys())
+        print(f"🔍 DEBUG: Available emails in memory: {memory_emails}")
         raise HTTPException(status_code=400, detail="Invalid or expired verification code")
-    
-    stored_code = stored_data.code
     
     print(f"🔍 DEBUG: Stored code: {stored_code}, Received code: {verification.code}")
     print(f"🔍 DEBUG: Codes match: {stored_code == verification.code}")
-    print(f"🔍 DEBUG: Code expires at: {stored_data.expires_at}")
-    print(f"🔍 DEBUG: Current time: {datetime.utcnow()}")
+    print(f"🔍 DEBUG: Code expires at: {expires_at}")
     
+    # Check if code matches
     if stored_code != verification.code:
         raise HTTPException(status_code=400, detail="Invalid verification code")
     
-    if stored_data.expires_at < datetime.utcnow().replace(tzinfo=None):
-        # Delete expired code
-        await database.execute(
-            verification_codes.delete().where(verification_codes.c.email == verification.email)
-        )
+    # Handle timezone comparison properly - normalize everything to UTC
+    from datetime import timezone
+    current_time = datetime.now(timezone.utc)
+    
+    # Convert expires_at to UTC if it has timezone info, otherwise assume UTC
+    if hasattr(expires_at, 'tzinfo') and expires_at.tzinfo is not None:
+        # Already has timezone info
+        expires_utc = expires_at
+    else:
+        # Assume it's UTC and add timezone info
+        expires_utc = expires_at.replace(tzinfo=timezone.utc) if expires_at else None
+    
+    print(f"🔍 DEBUG: Current time (UTC): {current_time}")
+    print(f"🔍 DEBUG: Expires at (UTC): {expires_utc}")
+    
+    if expires_utc and expires_utc < current_time:
+        # Delete expired code from both storage locations
+        if is_from_database:
+            try:
+                await database.execute(
+                    verification_codes.delete().where(verification_codes.c.email == verification.email)
+                )
+            except:
+                pass
+        if verification.email in VERIFICATION_CODES:
+            del VERIFICATION_CODES[verification.email]
+        
         raise HTTPException(status_code=400, detail="Verification code has expired")
     
     # Create user in database
-    user_data = stored_data.user_data
     user_data["verified"] = True
-    user_data["email_verified_at"] = datetime.utcnow().replace(tzinfo=None)
+    user_data["email_verified_at"] = current_time.replace(tzinfo=None)  # Store as naive datetime
     
     await create_user(user_data)
     
-    # Delete verification code
-    await database.execute(
-        verification_codes.delete().where(verification_codes.c.email == verification.email)
-    )
+    # Delete verification code from both locations
+    if is_from_database:
+        try:
+            await database.execute(
+                verification_codes.delete().where(verification_codes.c.email == verification.email)
+            )
+        except:
+            pass
+    
+    if verification.email in VERIFICATION_CODES:
+        del VERIFICATION_CODES[verification.email]
     
     # Create welcome notification
     await database.execute(
@@ -465,6 +556,7 @@ async def verify_email(request: Request, verification: EmailVerification):
         )
     )
     
+    print(f"✅ DEBUG: Successfully verified and created user: {user_data['email']}")
     return {"message": "Email verified successfully"}
 
 @app.post("/api/auth/login", response_model=TokenResponse)
@@ -581,29 +673,78 @@ async def resend_verification(request: Request, resend_data: ResendVerification,
     if existing_user and existing_user.verified:
         raise HTTPException(status_code=400, detail="Email is already verified")
     
-    # Check if there's a pending verification
-    if resend_data.email not in VERIFICATION_CODES:
-        raise HTTPException(status_code=400, detail="No pending verification found for this email")
+    # Check if there's a pending verification in database or memory
+    pending_verification = None
     
-    stored_data = VERIFICATION_CODES[resend_data.email]
+    try:
+        # Check database first
+        query = verification_codes.select().where(verification_codes.c.email == resend_data.email)
+        db_data = await database.fetch_one(query)
+        if db_data:
+            pending_verification = db_data.user_data
+    except Exception as e:
+        print(f"⚠️ Database lookup error: {str(e)}")
+    
+    # Check memory if not found in database
+    if not pending_verification and resend_data.email in VERIFICATION_CODES:
+        pending_verification = VERIFICATION_CODES[resend_data.email]["user_data"]
+    
+    if not pending_verification:
+        raise HTTPException(status_code=400, detail="No pending verification found for this email")
     
     # Generate new verification code
     new_verification_code = generate_verification_code()
     
-    # Update the stored verification data with new code and expiry
-    VERIFICATION_CODES[resend_data.email] = {
-        "code": new_verification_code,
-        "expires": datetime.utcnow() + timedelta(minutes=10),
-        "user_data": stored_data["user_data"]  # Keep original user data
-    }
+    # Clean up existing codes first
+    try:
+        await database.execute(
+            verification_codes.delete().where(verification_codes.c.email == resend_data.email)
+        )
+    except:
+        pass
+    
+    if resend_data.email in VERIFICATION_CODES:
+        del VERIFICATION_CODES[resend_data.email]
+    
+    # Store new verification code
+    try:
+        from datetime import timezone
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+        
+        await database.execute(
+            verification_codes.insert().values(
+                email=resend_data.email,
+                code=new_verification_code,
+                expires_at=expires_at,
+                user_data=pending_verification
+            )
+        )
+        
+        # Also store in memory as backup
+        VERIFICATION_CODES[resend_data.email] = {
+            "code": new_verification_code,
+            "expires": expires_at.replace(tzinfo=None),
+            "user_data": pending_verification
+        }
+        
+    except Exception as e:
+        # Fallback to memory only
+        VERIFICATION_CODES[resend_data.email] = {
+            "code": new_verification_code,
+            "expires": datetime.utcnow() + timedelta(minutes=15),
+            "user_data": pending_verification
+        }
+        print(f"⚠️ Using memory storage only: {str(e)}")
     
     # Send new verification email
     background_tasks.add_task(
         email_service.send_verification_email,
         resend_data.email,
         new_verification_code,
-        stored_data["user_data"]["name"]
+        pending_verification["name"]
     )
+    
+    print(f"🔑 DEBUG: New verification code for {resend_data.email}: {new_verification_code}")
     
     return {"message": "Verification code resent successfully"}
 
