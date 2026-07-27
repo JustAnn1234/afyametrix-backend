@@ -80,6 +80,16 @@ cases = Table(
     Column("updated_at", DateTime(timezone=True), server_default=func.now(), onupdate=func.now()),
 )
 
+# Create verification_codes table for production
+verification_codes = Table(
+    "verification_codes",
+    metadata,
+    Column("email", String(255), primary_key=True),
+    Column("code", String(6), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("user_data", JSON, nullable=False),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+)
 # Dashboard alerts table
 alert_type = ENUM('warning', 'info', 'error', name='alert_type')
 dashboard_alerts = Table(
