@@ -434,7 +434,7 @@ async def verify_email(request: Request, verification: EmailVerification):
     if stored_code != verification.code:
         raise HTTPException(status_code=400, detail="Invalid verification code")
     
-    if stored_data.expires_at < datetime.utcnow():
+    if stored_data.expires_at < datetime.utcnow().replace(tzinfo=None):
         # Delete expired code
         await database.execute(
             verification_codes.delete().where(verification_codes.c.email == verification.email)
@@ -444,7 +444,7 @@ async def verify_email(request: Request, verification: EmailVerification):
     # Create user in database
     user_data = stored_data.user_data
     user_data["verified"] = True
-    user_data["email_verified_at"] = datetime.utcnow()
+    user_data["email_verified_at"] = datetime.utcnow().replace(tzinfo=None)
     
     await create_user(user_data)
     
