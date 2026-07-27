@@ -31,7 +31,7 @@ from jose import JWTError, jwt
 # Database
 from api.database import (
     database, connect_db, disconnect_db, 
-    users, notifications, cases, dashboard_alerts,
+    users, notifications, cases, dashboard_alerts, verification_codes,
     get_user_by_email, get_user_by_id, create_user, update_user
 )
 
@@ -362,25 +362,28 @@ async def register_user(request: Request, user: UserRegister, background_tasks: 
     verification_code = generate_verification_code()
     user_id = str(uuid.uuid4())
     
-    # Store verification code
-    VERIFICATION_CODES[user.email] = {
-        "code": verification_code,
-        "expires": datetime.utcnow() + timedelta(minutes=10),
-        "user_data": {
-            "id": user_id,
-            "name": user.name,
-            "email": user.email,
-            "password": get_password_hash(user.password),
-            "role": user.role,
-            "location": user.location,
-            "verified": False,
-            "notification_settings": {
-                "emailNotifications": True,
-                "smsAlerts": False,
-                "systemNotifications": True
+    # Store verification code in DATABASE (not memory)
+    await database.execute(
+        verification_codes.insert().values(
+            email=user.email,
+            code=verification_code,
+            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            user_data={
+                "id": user_id,
+                "name": user.name,
+                "email": user.email,
+                "password": get_password_hash(user.password),
+                "role": user.role,
+                "location": user.location,
+                "verified": False,
+                "notification_settings": {
+                    "emailNotifications": True,
+                    "smsAlerts": False,
+                    "systemNotifications": True
+                }
             }
-        }
-    }
+        )
+    )
     
     # DEBUG: Log verification code when email fails
     print(f"🔑 DEBUG: Verification code for {user.email}: {verification_code}")
@@ -407,37 +410,48 @@ async def register_user(request: Request, user: UserRegister, background_tasks: 
 @app.post("/api/auth/verify-email")
 @limiter.limit("10/minute")
 async def verify_email(request: Request, verification: EmailVerification):
-    cleanup_expired_codes()
+    # Get verification data from DATABASE
+    query = verification_codes.select().where(verification_codes.c.email == verification.email)
+    stored_data = await database.fetch_one(query)
     
     print(f"🔍 DEBUG: Verifying email {verification.email} with code {verification.code}")
     
-    if verification.email not in VERIFICATION_CODES:
+    if not stored_data:
         print(f"❌ DEBUG: Email {verification.email} not found in verification codes")
-        print(f"🔍 DEBUG: Available emails: {list(VERIFICATION_CODES.keys())}")
+        # Show available emails for debugging
+        all_codes = await database.fetch_all(verification_codes.select())
+        available_emails = [row.email for row in all_codes]
+        print(f"🔍 DEBUG: Available emails: {available_emails}")
         raise HTTPException(status_code=400, detail="Invalid or expired verification code")
     
-    stored_data = VERIFICATION_CODES[verification.email]
-    stored_code = stored_data["code"]
+    stored_code = stored_data.code
     
     print(f"🔍 DEBUG: Stored code: {stored_code}, Received code: {verification.code}")
     print(f"🔍 DEBUG: Codes match: {stored_code == verification.code}")
-    print(f"🔍 DEBUG: Code expires at: {stored_data['expires']}")
+    print(f"🔍 DEBUG: Code expires at: {stored_data.expires_at}")
     print(f"🔍 DEBUG: Current time: {datetime.utcnow()}")
     
     if stored_code != verification.code:
         raise HTTPException(status_code=400, detail="Invalid verification code")
     
-    if stored_data["expires"] < datetime.utcnow():
-        del VERIFICATION_CODES[verification.email]
+    if stored_data.expires_at < datetime.utcnow():
+        # Delete expired code
+        await database.execute(
+            verification_codes.delete().where(verification_codes.c.email == verification.email)
+        )
         raise HTTPException(status_code=400, detail="Verification code has expired")
     
     # Create user in database
-    user_data = stored_data["user_data"]
+    user_data = stored_data.user_data
     user_data["verified"] = True
     user_data["email_verified_at"] = datetime.utcnow()
     
     await create_user(user_data)
-    del VERIFICATION_CODES[verification.email]
+    
+    # Delete verification code
+    await database.execute(
+        verification_codes.delete().where(verification_codes.c.email == verification.email)
+    )
     
     # Create welcome notification
     await database.execute(
