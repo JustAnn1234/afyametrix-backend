@@ -382,6 +382,9 @@ async def register_user(request: Request, user: UserRegister, background_tasks: 
         }
     }
     
+    # DEBUG: Log verification code when email fails
+    print(f"🔑 DEBUG: Verification code for {user.email}: {verification_code}")
+    
     # Send verification email
     background_tasks.add_task(
         email_service.send_verification_email, 
