@@ -20,3 +20,4 @@ alembic
 email-validator
 aiosmtplib
 slowapi
+resend

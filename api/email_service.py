@@ -9,6 +9,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 import asyncio
+import resend
 
 load_dotenv()
 
@@ -18,6 +19,7 @@ SMTP_PORT = int(os.getenv("EMAIL_PORT", "587"))
 SMTP_USERNAME = os.getenv("EMAIL_USERNAME", "")
 SMTP_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
 FROM_EMAIL = os.getenv("EMAIL_FROM", SMTP_USERNAME)
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 
 class EmailService:
     def __init__(self):
@@ -26,9 +28,40 @@ class EmailService:
         self.username = SMTP_USERNAME
         self.password = SMTP_PASSWORD
         self.from_email = FROM_EMAIL
+        self.resend_key = RESEND_API_KEY
+        
+        # Set Resend API key if available
+        if self.resend_key:
+            resend.api_key = self.resend_key
+    
+    async def send_email_resend(self, to_email: str, subject: str, html_content: str):
+        """Send email using Resend API"""
+        try:
+            params = {
+                "from": "AfyaMetrix <onboarding@resend.dev>",  # Use Resend's default sender
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+            }
+            
+            email = resend.Emails.send(params)
+            print(f"✅ Email sent successfully via Resend to {to_email}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Resend email failed to {to_email}: {str(e)}")
+            return False
     
     async def send_email(self, to_email: str, subject: str, html_content: str, text_content: str = None):
-        """Send email with HTML content"""
+        """Send email with fallback: Resend API -> SMTP -> Console Log"""
+        
+        # Try Resend first if API key is available
+        if self.resend_key:
+            success = await self.send_email_resend(to_email, subject, html_content)
+            if success:
+                return True
+        
+        # Fallback to SMTP
         try:
             # Create message
             message = MIMEMultipart("alternative")
@@ -55,7 +88,7 @@ class EmailService:
                 password=self.password,
             )
             
-            print(f"✅ Email sent successfully to {to_email}")
+            print(f"✅ Email sent successfully via SMTP to {to_email}")
             return True
             
         except Exception as e:
