@@ -20,8 +20,15 @@ DATABASE_URL = os.getenv(
     "postgresql://postgres:password@localhost:5432/afyametrix"
 )
 
+# Fix for Supabase pgbouncer - disable prepared statements
+if "supabase" in DATABASE_URL:
+    if "?" in DATABASE_URL:
+        DATABASE_URL += "&prepared_statement_cache_size=0"
+    else:
+        DATABASE_URL += "?prepared_statement_cache_size=0"
+
 # Database instance
-database = Database(DATABASE_URL)
+database = Database(DATABASE_URL, force_rollback=False, min_size=1, max_size=3)
 metadata = MetaData()
 
 # ========================================
