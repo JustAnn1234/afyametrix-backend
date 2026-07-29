@@ -67,7 +67,7 @@ PASSWORD_RESET_CODES = {}
 # HEALTH DATA LOADING (from original main.py)
 # ========================================
 
-DATA_PATH = r"C:\Users\admin\afyametrix-backend\data\processed"
+DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "processed")
 
 def load_health_data():
     """Load health datasets or create sample data if files don't exist."""
