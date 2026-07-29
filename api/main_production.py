@@ -527,6 +527,11 @@ async def verify_email(request: Request, verification: EmailVerification):
         raise HTTPException(status_code=400, detail="Verification code has expired")
     
     # Create user in database
+    # Handle case where user_data might be JSON string instead of dict (deployment issue)
+    if isinstance(user_data, str):
+        import json
+        user_data = json.loads(user_data)
+    
     user_data["verified"] = True
     user_data["email_verified_at"] = current_time.replace(tzinfo=None)  # Store as naive datetime
     
