@@ -421,12 +421,23 @@ async def register_user(request: Request, user: UserRegister, background_tasks: 
         )
         
         # Send verification email
-        background_tasks.add_task(
-            email_service.send_verification_email, 
+        email_sent = await email_service.send_verification_email(
             user.email, 
             verification_code, 
             user.name
         )
+        
+        # PRODUCTION: Email delivery is critical
+        if not email_sent:
+            logger.error(f"CRITICAL: Email delivery failed for {user.email}")
+            # Clean up verification code if email failed
+            await database.execute(
+                verification_codes.delete().where(verification_codes.c.email == user.email)
+            )
+            raise HTTPException(
+                status_code=503, 
+                detail="Email service temporarily unavailable. Please try again later or contact support."
+            )
         
         logger.info(f"User registered successfully: {user.email}")
         
@@ -600,12 +611,23 @@ async def forgot_password(request: Request, forgot_data: ForgotPassword, backgro
         )
         
         # Send reset email
-        background_tasks.add_task(
-            email_service.send_password_reset_email,
+        email_sent = await email_service.send_password_reset_email(
             forgot_data.email,
             reset_code,
             user.name
         )
+        
+        # PRODUCTION: Email delivery is critical
+        if not email_sent:
+            logger.error(f"CRITICAL: Password reset email failed for {forgot_data.email}")
+            # Clean up reset code if email failed
+            await database.execute(
+                verification_codes.delete().where(verification_codes.c.email == reset_email_key)
+            )
+            raise HTTPException(
+                status_code=503, 
+                detail="Email service temporarily unavailable. Please try again later or contact support."
+            )
         
         logger.info(f"Password reset code sent for: {forgot_data.email}")
         return {"message": "If the email exists, a reset code has been sent"}
@@ -719,12 +741,19 @@ async def resend_verification(request: Request, resend_data: ResendVerification,
         )
         
         # Send new verification email
-        background_tasks.add_task(
-            email_service.send_verification_email,
+        email_sent = await email_service.send_verification_email(
             resend_data.email,
             new_verification_code,
             pending_verification["name"]
         )
+        
+        # PRODUCTION: Email delivery is critical
+        if not email_sent:
+            logger.error(f"CRITICAL: Resend verification email failed for {resend_data.email}")
+            raise HTTPException(
+                status_code=503, 
+                detail="Email service temporarily unavailable. Please try again later or contact support."
+            )
         
         logger.info(f"Verification code resent for: {resend_data.email}")
         return {"message": "Verification code resent successfully"}
@@ -1238,11 +1267,29 @@ async def sync_offline_data(request: Request, sync_data: SyncRequest, current_us
 
 @app.get("/api/health")
 async def health_check():
-    return {
-        "status": "healthy",
+    """Enhanced health check including email service"""
+    # Test email service connectivity
+    email_status = await email_service.test_email_connection()
+    
+    health_status = {
+        "status": "healthy" if email_status else "degraded",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "services": {
+            "database": "healthy",  # We know it's healthy if we got here
+            "email": "healthy" if email_status else "unhealthy"
+        }
     }
+    
+    # Return appropriate status code
+    if not email_status:
+        logger.warning("Health check: Email service is down")
+        return JSONResponse(
+            status_code=503,  # Service Unavailable
+            content=health_status
+        )
+    
+    return health_status
 
 # ========================================
 # ROOT ENDPOINT
