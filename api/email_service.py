@@ -60,6 +60,9 @@ class EmailService:
             success = await self.send_email_resend(to_email, subject, html_content)
             if success:
                 return True
+            else:
+                # Log the fallback to SMTP
+                print(f"⚠️ Resend API failed, falling back to SMTP for {to_email}")
         
         # Fallback to SMTP
         try:

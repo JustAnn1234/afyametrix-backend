@@ -18,6 +18,7 @@ import os
 import json
 import uuid
 import random
+import secrets
 from typing import List, Optional, Dict, Any
 from dotenv import load_dotenv
 
@@ -46,12 +47,19 @@ load_dotenv()
 # ========================================
 
 # JWT Configuration
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "afyametrix-super-secret-key-change-in-production")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not JWT_SECRET_KEY:
+    raise ValueError("JWT_SECRET_KEY environment variable is required for production")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))
 
 # Rate limiting
 limiter = Limiter(key_func=get_remote_address)
+
+# Password hashing configuration
+PASSWORD_SALT = os.getenv("PASSWORD_SALT")
+if not PASSWORD_SALT:
+    raise ValueError("PASSWORD_SALT environment variable is required for production")
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -59,9 +67,14 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Security scheme
 security = HTTPBearer()
 
-# In-memory storage for verification codes (use Redis in production)
-VERIFICATION_CODES = {}
-PASSWORD_RESET_CODES = {}
+# Logging configuration
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Remove in-memory storage - use database only for production
+# VERIFICATION_CODES = {}
+# PASSWORD_RESET_CODES = {}
 
 # ========================================
 # HEALTH DATA LOADING (from original main.py)
@@ -90,9 +103,9 @@ def load_health_data():
             if 'date' in df.columns:
                 df['date'] = pd.to_datetime(df['date'])
             data[key] = df
-            print(f"  ✅ Loaded {filename}: {len(df):,} rows")
+            logger.info(f"Loaded {filename}: {len(df):,} rows")
         except Exception:
-            print(f"  📝 Creating sample health data for {filename}")
+            logger.info(f"Creating sample health data for {filename}")
             data[key] = create_health_sample_data(key)
     
     return data
@@ -140,9 +153,9 @@ def df_to_json(df, max_rows=None):
     return json.loads(df.to_json(orient='records', date_format='iso'))
 
 # Load health data
-print("🔄 Loading AfyaMetrix health datasets...")
+logger.info("Loading AfyaMetrix health datasets...")
 HEALTH_DATA = load_health_data()
-print(f"✅ Health data loaded with {len(HEALTH_DATA)} datasets\n")
+logger.info(f"Health data loaded with {len(HEALTH_DATA)} datasets")
 
 # ========================================
 # FASTAPI APP INITIALIZATION
@@ -161,16 +174,25 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# CORS middleware
+# CORS middleware - Production ready
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         os.getenv("FRONTEND_URL", "http://localhost:3000"),
-        "https://afyametrix-frontend.netlify.app"  # Add your frontend URL directly
+        "https://afyametrix-frontend.netlify.app",
+        "https://your-production-domain.com"  # Add your production domain
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "authorization",
+        "content-type", 
+        "x-requested-with",
+        "accept",
+        "origin",
+        "user-agent",
+        "cache-control"
+    ],
 )
 
 # ========================================
@@ -268,17 +290,12 @@ class CaseResponse(BaseModel):
 # ========================================
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    # Use simple hash comparison for production compatibility
-    import hashlib
-    salt = "afyametrix_salt_2024"
-    plain_hash = hashlib.sha256((plain_password + salt).encode()).hexdigest()
-    return plain_hash == hashed_password
+    """Verify a plaintext password against its hash using bcrypt."""
+    return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
-    # Use SHA256 with salt instead of bcrypt for production compatibility
-    import hashlib
-    salt = "afyametrix_salt_2024"
-    return hashlib.sha256((password + salt).encode()).hexdigest()
+    """Hash a password using bcrypt."""
+    return pwd_context.hash(password)
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
@@ -287,53 +304,54 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Get current user from JWT token."""
     try:
-        print(f"🔍 DEBUG: Received token: {credentials.credentials[:20]}...")
-        
         payload = jwt.decode(credentials.credentials, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         email: str = payload.get("sub")
         user_id: str = payload.get("user_id")
         
-        print(f"🔍 DEBUG: Decoded payload - email: {email}, user_id: {user_id}")
-        
-        if email is None:
-            print("❌ DEBUG: Email is None in token payload")
+        if email is None or user_id is None:
+            logger.warning("Invalid token payload: missing email or user_id")
             raise HTTPException(status_code=401, detail="Invalid authentication credentials")
         
         user = await get_user_by_id(user_id)
-        print(f"🔍 DEBUG: Database lookup result - user found: {user is not None}")
         
         if not user:
-            print(f"❌ DEBUG: No user found with ID: {user_id}")
+            logger.warning(f"User not found for ID: {user_id}")
             raise HTTPException(status_code=401, detail="User not found")
         
-        print(f"✅ DEBUG: Successfully authenticated user: {user.email}")
+        if not user.verified:
+            logger.warning(f"Unverified user attempted access: {user.email}")
+            raise HTTPException(status_code=401, detail="Email verification required")
+        
         return user
         
     except JWTError as e:
-        print(f"❌ DEBUG: JWT decode error: {e}")
+        logger.error(f"JWT decode error: {e}")
         raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+    except Exception as e:
+        logger.error(f"Authentication error: {e}")
+        raise HTTPException(status_code=401, detail="Authentication failed")
 
 def generate_verification_code() -> str:
-    return str(random.randint(100000, 999999))
+    """Generate cryptographically secure 6-digit verification code."""
+    import secrets
+    return f"{secrets.randbelow(900000) + 100000}"
 
-def cleanup_expired_codes():
-    current_time = datetime.utcnow()
-    # Clean verification codes
-    expired_emails = [
-        email for email, data in VERIFICATION_CODES.items()
-        if data["expires"] < current_time
-    ]
-    for email in expired_emails:
-        del VERIFICATION_CODES[email]
-    
-    # Clean password reset codes
-    expired_emails = [
-        email for email, data in PASSWORD_RESET_CODES.items()
-        if data["expires"] < current_time
-    ]
-    for email in expired_emails:
-        del PASSWORD_RESET_CODES[email]
+async def cleanup_expired_verification_codes():
+    """Remove expired verification codes from database."""
+    try:
+        from datetime import timezone
+        current_time = datetime.now(timezone.utc)
+        
+        await database.execute(
+            verification_codes.delete().where(
+                verification_codes.c.expires_at < current_time
+            )
+        )
+        logger.info("Expired verification codes cleaned up")
+    except Exception as e:
+        logger.error(f"Failed to cleanup expired codes: {e}")
 
 # ========================================
 # DATABASE EVENT HANDLERS
@@ -354,43 +372,44 @@ async def shutdown():
 @app.post("/api/auth/register", status_code=201)
 @limiter.limit("5/minute")
 async def register_user(request: Request, user: UserRegister, background_tasks: BackgroundTasks):
-    # Check if user exists
-    existing_user = await get_user_by_email(user.email)
-    if existing_user:
-        raise HTTPException(status_code=409, detail="User with this email already exists")
-    
-    # Generate verification code
-    verification_code = generate_verification_code()
-    user_id = str(uuid.uuid4())
-    
-    user_data = {
-        "id": user_id,
-        "name": user.name,
-        "email": user.email,
-        "password": get_password_hash(user.password),
-        "role": user.role,
-        "location": user.location,
-        "verified": False,
-        "notification_settings": {
-            "emailNotifications": True,
-            "smsAlerts": False,
-            "systemNotifications": True
-        }
-    }
-    
-    # Clean up any existing verification codes for this email first
+    """Register a new user with email verification."""
     try:
+        # Clean up expired codes
+        await cleanup_expired_verification_codes()
+        
+        # Check if user exists
+        existing_user = await get_user_by_email(user.email)
+        if existing_user:
+            logger.warning(f"Registration attempt for existing email: {user.email}")
+            raise HTTPException(status_code=409, detail="User with this email already exists")
+        
+        # Generate verification code and user data
+        verification_code = generate_verification_code()
+        user_id = str(uuid.uuid4())
+        
+        user_data = {
+            "id": user_id,
+            "name": user.name,
+            "email": user.email,
+            "password": get_password_hash(user.password),
+            "role": user.role,
+            "location": user.location,
+            "verified": False,
+            "notification_settings": {
+                "emailNotifications": True,
+                "smsAlerts": False,
+                "systemNotifications": True
+            }
+        }
+        
+        # Store verification code in database
+        from datetime import timezone
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+        
+        # Clean any existing verification codes for this email
         await database.execute(
             verification_codes.delete().where(verification_codes.c.email == user.email)
         )
-        print(f"🧹 Cleaned existing verification codes for {user.email}")
-    except Exception as e:
-        print(f"⚠️ No existing codes to clean: {str(e)}")
-    
-    try:
-        # Store in database with proper timezone handling
-        from datetime import timezone
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)  # 15 minutes for testing
         
         await database.execute(
             verification_codes.insert().values(
@@ -400,172 +419,107 @@ async def register_user(request: Request, user: UserRegister, background_tasks: 
                 user_data=user_data
             )
         )
-        print("✅ Using database storage for verification codes")
         
-        # Also store in memory as backup
-        VERIFICATION_CODES[user.email] = {
-            "code": verification_code,
-            "expires": expires_at.replace(tzinfo=None),  # Store as naive datetime for memory
-            "user_data": user_data
+        # Send verification email
+        background_tasks.add_task(
+            email_service.send_verification_email, 
+            user.email, 
+            verification_code, 
+            user.name
+        )
+        
+        logger.info(f"User registered successfully: {user.email}")
+        
+        return {
+            "message": "User registered successfully. Please check your email for verification code.",
+            "user": {
+                "id": user_id,
+                "name": user.name,
+                "email": user.email,
+                "role": user.role,
+                "verified": False
+            }
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        # Fallback to memory storage only
-        VERIFICATION_CODES[user.email] = {
-            "code": verification_code,
-            "expires": datetime.utcnow() + timedelta(minutes=15),
-            "user_data": user_data
-        }
-        print(f"⚠️ Using memory storage only: {str(e)}")
-    
-    # DEBUG: Log verification code when email fails
-    print(f"🔑 DEBUG: Verification code for {user.email}: {verification_code}")
-    
-    # Send verification email
-    background_tasks.add_task(
-        email_service.send_verification_email, 
-        user.email, 
-        verification_code, 
-        user.name
-    )
-    
-    return {
-        "message": "User registered successfully. Please check your email for verification code.",
-        "user": {
-            "id": user_id,
-            "name": user.name,
-            "email": user.email,
-            "role": user.role,
-            "verified": False
-        }
-    }
+        logger.error(f"Registration error for {user.email}: {e}")
+        raise HTTPException(status_code=500, detail="Registration failed")
 
 @app.post("/api/auth/verify-email")
 @limiter.limit("10/minute")
 async def verify_email(request: Request, verification: EmailVerification):
-    print(f"🔍 DEBUG: Verifying email {verification.email} with code {verification.code}")
-    
-    # Try database first, then memory
-    stored_data = None
-    stored_code = None
-    expires_at = None
-    user_data = None
-    is_from_database = False
-    
+    """Verify user email with 6-digit code."""
     try:
-        # Try to get verification data from DATABASE
+        await cleanup_expired_verification_codes()
+        
+        # Get verification data from database
         query = verification_codes.select().where(verification_codes.c.email == verification.email)
         db_data = await database.fetch_one(query)
         
-        if db_data:
-            stored_data = db_data
-            stored_code = db_data.code
-            expires_at = db_data.expires_at
-            user_data = db_data.user_data
-            is_from_database = True
-            print("🔍 DEBUG: Found verification code in database")
-        else:
-            print("🔍 DEBUG: No verification code found in database, checking memory...")
-            
-    except Exception as e:
-        print(f"⚠️ Database lookup failed: {str(e)}")
-    
-    # Fallback to memory storage if database lookup failed or no data found
-    if not stored_data and verification.email in VERIFICATION_CODES:
-        memory_data = VERIFICATION_CODES[verification.email]
-        stored_code = memory_data["code"]
-        expires_at = memory_data["expires"]
-        user_data = memory_data["user_data"]
-        is_from_database = False
-        print("🔍 DEBUG: Found verification code in memory")
-    
-    if not stored_code:
-        print(f"❌ DEBUG: Email {verification.email} not found in verification codes")
-        # Show available emails for debugging
-        try:
-            all_codes = await database.fetch_all(verification_codes.select())
-            available_emails = [row.email for row in all_codes]
-            print(f"🔍 DEBUG: Available emails in DB: {available_emails}")
-        except:
-            pass
-        memory_emails = list(VERIFICATION_CODES.keys())
-        print(f"🔍 DEBUG: Available emails in memory: {memory_emails}")
-        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
-    
-    print(f"🔍 DEBUG: Stored code: {stored_code}, Received code: {verification.code}")
-    print(f"🔍 DEBUG: Codes match: {stored_code == verification.code}")
-    print(f"🔍 DEBUG: Code expires at: {expires_at}")
-    
-    # Check if code matches
-    if stored_code != verification.code:
-        raise HTTPException(status_code=400, detail="Invalid verification code")
-    
-    # Handle timezone comparison properly - normalize everything to UTC
-    from datetime import timezone
-    current_time = datetime.now(timezone.utc)
-    
-    # Convert expires_at to UTC if it has timezone info, otherwise assume UTC
-    if hasattr(expires_at, 'tzinfo') and expires_at.tzinfo is not None:
-        # Already has timezone info
-        expires_utc = expires_at
-    else:
-        # Assume it's UTC and add timezone info
-        expires_utc = expires_at.replace(tzinfo=timezone.utc) if expires_at else None
-    
-    print(f"🔍 DEBUG: Current time (UTC): {current_time}")
-    print(f"🔍 DEBUG: Expires at (UTC): {expires_utc}")
-    
-    if expires_utc and expires_utc < current_time:
-        # Delete expired code from both storage locations
-        if is_from_database:
-            try:
-                await database.execute(
-                    verification_codes.delete().where(verification_codes.c.email == verification.email)
-                )
-            except:
-                pass
-        if verification.email in VERIFICATION_CODES:
-            del VERIFICATION_CODES[verification.email]
+        if not db_data:
+            logger.warning(f"Verification attempt for non-existent email: {verification.email}")
+            raise HTTPException(status_code=400, detail="Invalid or expired verification code")
         
-        raise HTTPException(status_code=400, detail="Verification code has expired")
-    
-    # Create user in database
-    # Handle case where user_data might be JSON string instead of dict (deployment issue)
-    if isinstance(user_data, str):
-        import json
-        user_data = json.loads(user_data)
-    
-    user_data["verified"] = True
-    user_data["email_verified_at"] = current_time.replace(tzinfo=None)  # Store as naive datetime
-    
-    await create_user(user_data)
-    
-    # Delete verification code from both locations
-    if is_from_database:
-        try:
+        # Check if code matches
+        if db_data.code != verification.code:
+            logger.warning(f"Invalid verification code attempt for: {verification.email}")
+            raise HTTPException(status_code=400, detail="Invalid verification code")
+        
+        # Check if code is expired
+        from datetime import timezone
+        current_time = datetime.now(timezone.utc)
+        
+        if hasattr(db_data.expires_at, 'tzinfo') and db_data.expires_at.tzinfo is not None:
+            expires_utc = db_data.expires_at
+        else:
+            expires_utc = db_data.expires_at.replace(tzinfo=timezone.utc)
+        
+        if expires_utc < current_time:
             await database.execute(
                 verification_codes.delete().where(verification_codes.c.email == verification.email)
             )
-        except:
-            pass
-    
-    if verification.email in VERIFICATION_CODES:
-        del VERIFICATION_CODES[verification.email]
-    
-    # Create welcome notification
-    await database.execute(
-        notifications.insert().values(
-            id=str(uuid.uuid4()),
-            user_id=user_data["id"],
-            type="info",
-            title="Welcome to AfyaMetrix!",
-            message="Your account has been successfully verified. Start reporting health data in your community.",
-            read=False
+            logger.warning(f"Expired verification code for: {verification.email}")
+            raise HTTPException(status_code=400, detail="Verification code has expired")
+        
+        # Handle user_data (could be JSON string or dict)
+        user_data = db_data.user_data
+        if isinstance(user_data, str):
+            import json
+            user_data = json.loads(user_data)
+        
+        user_data["verified"] = True
+        user_data["email_verified_at"] = current_time.replace(tzinfo=None)
+        
+        # Create user in database
+        await create_user(user_data)
+        
+        # Delete verification code
+        await database.execute(
+            verification_codes.delete().where(verification_codes.c.email == verification.email)
         )
-    )
-    
-    print(f"✅ DEBUG: Successfully verified and created user: {user_data['email']}")
-    return {"message": "Email verified successfully"}
+        
+        # Create welcome notification
+        await database.execute(
+            notifications.insert().values(
+                id=str(uuid.uuid4()),
+                user_id=user_data["id"],
+                type="info",
+                title="Welcome to AfyaMetrix!",
+                message="Your account has been successfully verified. Start reporting health data in your community.",
+                read=False
+            )
+        )
+        
+        logger.info(f"Email verified successfully for: {verification.email}")
+        return {"message": "Email verified successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Email verification error for {verification.email}: {e}")
+        raise HTTPException(status_code=500, detail="Verification failed")
 
 @app.post("/api/auth/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
@@ -609,152 +563,330 @@ async def get_current_user_info(current_user=Depends(get_current_user)):
 @app.post("/api/auth/forgot-password")
 @limiter.limit("3/minute")
 async def forgot_password(request: Request, forgot_data: ForgotPassword, background_tasks: BackgroundTasks):
-    """
-    Send password reset code to user's email.
-    """
-    cleanup_expired_codes()
-    
-    user = await get_user_by_email(forgot_data.email)
-    if not user:
-        # Security: Don't reveal if email exists or not
+    """Send password reset code to user's email."""
+    try:
+        await cleanup_expired_verification_codes()
+        
+        user = await get_user_by_email(forgot_data.email)
+        if not user:
+            # Security: Don't reveal if email exists or not
+            return {"message": "If the email exists, a reset code has been sent"}
+        
+        if not user.verified:
+            logger.warning(f"Password reset attempt for unverified user: {forgot_data.email}")
+            raise HTTPException(status_code=400, detail="Please verify your email address first")
+        
+        # Generate reset code
+        reset_code = generate_verification_code()
+        
+        # Store reset code in database using verification_codes table with special prefix
+        from datetime import timezone
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+        
+        reset_email_key = f"reset_{forgot_data.email}"
+        
+        # Clean existing reset codes
+        await database.execute(
+            verification_codes.delete().where(verification_codes.c.email == reset_email_key)
+        )
+        
+        await database.execute(
+            verification_codes.insert().values(
+                email=reset_email_key,
+                code=reset_code,
+                expires_at=expires_at,
+                user_data={"user_id": str(user.id), "email": forgot_data.email}
+            )
+        )
+        
+        # Send reset email
+        background_tasks.add_task(
+            email_service.send_password_reset_email,
+            forgot_data.email,
+            reset_code,
+            user.name
+        )
+        
+        logger.info(f"Password reset code sent for: {forgot_data.email}")
         return {"message": "If the email exists, a reset code has been sent"}
-    
-    # Generate reset code
-    reset_code = generate_verification_code()
-    
-    # Store reset code (expires in 15 minutes)
-    PASSWORD_RESET_CODES[forgot_data.email] = {
-        "code": reset_code,
-        "expires": datetime.utcnow() + timedelta(minutes=15),
-        "user_id": str(user.id)
-    }
-    
-    # Send reset email
-    background_tasks.add_task(
-        email_service.send_password_reset_email,
-        forgot_data.email,
-        reset_code,
-        user.name
-    )
-    
-    return {"message": "If the email exists, a reset code has been sent"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Password reset error for {forgot_data.email}: {e}")
+        return {"message": "If the email exists, a reset code has been sent"}
 
 @app.post("/api/auth/reset-password")
 @limiter.limit("5/minute")
 async def reset_password(request: Request, reset_data: ResetPassword):
-    """
-    Reset user password with verification code.
-    """
-    cleanup_expired_codes()
-    
-    if reset_data.email not in PASSWORD_RESET_CODES:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
-    
-    stored_data = PASSWORD_RESET_CODES[reset_data.email]
-    
-    if stored_data["code"] != reset_data.code:
-        raise HTTPException(status_code=400, detail="Invalid reset code")
-    
-    if stored_data["expires"] < datetime.utcnow():
-        del PASSWORD_RESET_CODES[reset_data.email]
-        raise HTTPException(status_code=400, detail="Reset code has expired")
-    
-    # Update user password
-    new_password_hash = get_password_hash(reset_data.new_password)
-    await update_user(stored_data["user_id"], {"password": new_password_hash})
-    
-    # Remove reset code
-    del PASSWORD_RESET_CODES[reset_data.email]
-    
-    return {"message": "Password reset successfully"}
+    """Reset user password with verification code."""
+    try:
+        await cleanup_expired_verification_codes()
+        
+        reset_email_key = f"reset_{reset_data.email}"
+        
+        # Get reset code from database
+        query = verification_codes.select().where(verification_codes.c.email == reset_email_key)
+        db_data = await database.fetch_one(query)
+        
+        if not db_data:
+            logger.warning(f"Password reset attempt with invalid code for: {reset_data.email}")
+            raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+        
+        if db_data.code != reset_data.code:
+            logger.warning(f"Password reset attempt with wrong code for: {reset_data.email}")
+            raise HTTPException(status_code=400, detail="Invalid reset code")
+        
+        # Check if code is expired
+        from datetime import timezone
+        current_time = datetime.now(timezone.utc)
+        
+        if hasattr(db_data.expires_at, 'tzinfo') and db_data.expires_at.tzinfo is not None:
+            expires_utc = db_data.expires_at
+        else:
+            expires_utc = db_data.expires_at.replace(tzinfo=timezone.utc)
+        
+        if expires_utc < current_time:
+            await database.execute(
+                verification_codes.delete().where(verification_codes.c.email == reset_email_key)
+            )
+            logger.warning(f"Expired reset code for: {reset_data.email}")
+            raise HTTPException(status_code=400, detail="Reset code has expired")
+        
+        # Update user password
+        user_data = db_data.user_data
+        if isinstance(user_data, str):
+            import json
+            user_data = json.loads(user_data)
+        
+        new_password_hash = get_password_hash(reset_data.new_password)
+        await update_user(user_data["user_id"], {"password": new_password_hash})
+        
+        # Remove reset code
+        await database.execute(
+            verification_codes.delete().where(verification_codes.c.email == reset_email_key)
+        )
+        
+        logger.info(f"Password reset successfully for: {reset_data.email}")
+        return {"message": "Password reset successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Password reset error for {reset_data.email}: {e}")
+        raise HTTPException(status_code=500, detail="Password reset failed")
 
 @app.post("/api/auth/resend-verification")
 @limiter.limit("3/minute") 
 async def resend_verification(request: Request, resend_data: ResendVerification, background_tasks: BackgroundTasks):
-    """
-    Resend verification code to user's email.
-    """
-    cleanup_expired_codes()
-    
-    # Check if user already exists (and verified)
-    existing_user = await get_user_by_email(resend_data.email)
-    if existing_user and existing_user.verified:
-        raise HTTPException(status_code=400, detail="Email is already verified")
-    
-    # Check if there's a pending verification in database or memory
-    pending_verification = None
-    
+    """Resend verification code to user's email."""
     try:
-        # Check database first
+        await cleanup_expired_verification_codes()
+        
+        # Check if user already exists and is verified
+        existing_user = await get_user_by_email(resend_data.email)
+        if existing_user and existing_user.verified:
+            logger.warning(f"Resend attempt for already verified email: {resend_data.email}")
+            raise HTTPException(status_code=400, detail="Email is already verified")
+        
+        # Check for pending verification
         query = verification_codes.select().where(verification_codes.c.email == resend_data.email)
         db_data = await database.fetch_one(query)
-        if db_data:
-            pending_verification = db_data.user_data
-    except Exception as e:
-        print(f"⚠️ Database lookup error: {str(e)}")
-    
-    # Check memory if not found in database
-    if not pending_verification and resend_data.email in VERIFICATION_CODES:
-        pending_verification = VERIFICATION_CODES[resend_data.email]["user_data"]
-    
-    if not pending_verification:
-        raise HTTPException(status_code=400, detail="No pending verification found for this email")
-    
-    # Generate new verification code
-    new_verification_code = generate_verification_code()
-    
-    # Clean up existing codes first
-    try:
-        await database.execute(
-            verification_codes.delete().where(verification_codes.c.email == resend_data.email)
-        )
-    except:
-        pass
-    
-    if resend_data.email in VERIFICATION_CODES:
-        del VERIFICATION_CODES[resend_data.email]
-    
-    # Store new verification code
-    try:
+        
+        if not db_data:
+            logger.warning(f"Resend attempt for non-existent verification: {resend_data.email}")
+            raise HTTPException(status_code=400, detail="No pending verification found for this email")
+        
+        pending_verification = db_data.user_data
+        if isinstance(pending_verification, str):
+            import json
+            pending_verification = json.loads(pending_verification)
+        
+        # Generate new verification code
+        new_verification_code = generate_verification_code()
+        
+        # Update verification code in database
         from datetime import timezone
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
         
         await database.execute(
-            verification_codes.insert().values(
-                email=resend_data.email,
+            verification_codes.update()
+            .where(verification_codes.c.email == resend_data.email)
+            .values(
                 code=new_verification_code,
-                expires_at=expires_at,
-                user_data=pending_verification
+                expires_at=expires_at
             )
         )
         
-        # Also store in memory as backup
-        VERIFICATION_CODES[resend_data.email] = {
-            "code": new_verification_code,
-            "expires": expires_at.replace(tzinfo=None),
-            "user_data": pending_verification
+        # Send new verification email
+        background_tasks.add_task(
+            email_service.send_verification_email,
+            resend_data.email,
+            new_verification_code,
+            pending_verification["name"]
+        )
+        
+        logger.info(f"Verification code resent for: {resend_data.email}")
+        return {"message": "Verification code resent successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Resend verification error for {resend_data.email}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to resend verification code")
+
+# ========================================
+# HEALTH INTELLIGENCE ENDPOINTS
+# ========================================
+
+@app.get("/api/health-intelligence/alerts")
+async def get_health_alerts(
+    limit: int = Query(10, ge=1, le=100),
+    current_user=Depends(get_current_user)
+):
+    """Get active health alerts for authenticated user."""
+    try:
+        # Get latest risk data for alerts
+        risk_df = HEALTH_DATA['regional_risk'].copy()
+        if risk_df.empty:
+            return {"alerts": []}
+        
+        latest = risk_df['date'].max()
+        alerts_data = risk_df[
+            (risk_df['date'] == latest) & 
+            (risk_df['risk_score'] >= 55)  # High risk threshold
+        ].nlargest(limit, 'risk_score')
+        
+        alerts = []
+        for _, row in alerts_data.iterrows():
+            alerts.append({
+                "id": f"alert_{row['country']}_{row['region']}_{latest.date()}",
+                "title": f"{row.get('top_disease', 'Health Alert')} - {row['region']}",
+                "message": f"High risk detected in {row['region']}, {row['country']}. Risk score: {row['risk_score']:.1f}/100",
+                "type": "warning" if row['risk_score'] < 75 else "error",
+                "createdAt": latest.isoformat(),
+                "location": f"{row['region']}, {row['country']}"
+            })
+        
+        return {"alerts": alerts}
+        
+    except Exception as e:
+        logger.error(f"Error fetching health alerts: {e}")
+        return {"alerts": []}
+
+@app.get("/api/health-intelligence/diseases")
+async def get_disease_stats(current_user=Depends(get_current_user)):
+    """Get disease statistics for authenticated user."""
+    try:
+        risk_df = HEALTH_DATA['regional_risk'].copy()
+        if risk_df.empty:
+            return {"diseases": []}
+        
+        # Get latest data and aggregate by disease
+        latest = risk_df['date'].max()
+        latest_data = risk_df[risk_df['date'] == latest]
+        
+        disease_stats = latest_data.groupby('top_disease').agg({
+            'total_cases': 'sum'
+        }).reset_index()
+        
+        diseases = []
+        for _, row in disease_stats.iterrows():
+            diseases.append({
+                "name": row['top_disease'],
+                "count": int(row['total_cases'])
+            })
+        
+        # Sort by case count descending
+        diseases.sort(key=lambda x: x['count'], reverse=True)
+        
+        return {"diseases": diseases}
+        
+    except Exception as e:
+        logger.error(f"Error fetching disease statistics: {e}")
+        return {"diseases": []}
+
+@app.get("/api/health-intelligence/recent")
+async def get_recent_entries(
+    limit: int = Query(10, ge=1, le=100),
+    current_user=Depends(get_current_user)
+):
+    """Get recent case entries for authenticated user."""
+    try:
+        # Get user's cases from database
+        query = (
+            cases.select()
+            .where(cases.c.user_id == current_user.id)
+            .order_by(cases.c.created_at.desc())
+            .limit(limit)
+        )
+        
+        user_cases = await database.fetch_all(query)
+        
+        recent_entries = []
+        for case in user_cases:
+            recent_entries.append({
+                "id": str(case.id),
+                "diseaseType": case.disease_type,
+                "cases": case.case_count,
+                "date": case.created_at.isoformat(),
+                "worker": current_user.name,
+                "status": case.status
+            })
+        
+        return {"recent": recent_entries}
+        
+    except Exception as e:
+        logger.error(f"Error fetching recent entries: {e}")
+        return {"recent": []}
+
+@app.get("/api/health-intelligence/dashboard")
+async def get_dashboard_data(current_user=Depends(get_current_user)):
+    """Get comprehensive dashboard data for authenticated user."""
+    try:
+        risk_df = HEALTH_DATA['regional_risk'].copy()
+        if risk_df.empty:
+            return {
+                "summary": {"total_cases": 0, "high_risk_regions": 0, "alerts_count": 0},
+                "recent_activity": []
+            }
+        
+        latest = risk_df['date'].max()
+        latest_data = risk_df[risk_df['date'] == latest]
+        
+        # Calculate summary statistics
+        total_cases = int(latest_data['total_cases'].sum())
+        high_risk_count = int((latest_data['risk_score'] >= 55).sum())
+        alerts_count = int((latest_data['active_alerts'] > 0).sum())
+        
+        # Get recent activity (top 5 high-risk regions)
+        recent_activity = []
+        top_regions = latest_data.nlargest(5, 'risk_score')
+        
+        for _, row in top_regions.iterrows():
+            recent_activity.append({
+                "region": row['region'],
+                "country": row['country'],
+                "risk_score": round(row['risk_score'], 1),
+                "disease": row.get('top_disease', 'Unknown'),
+                "timestamp": latest.isoformat()
+            })
+        
+        return {
+            "summary": {
+                "total_cases": total_cases,
+                "high_risk_regions": high_risk_count,
+                "alerts_count": alerts_count
+            },
+            "recent_activity": recent_activity
         }
         
     except Exception as e:
-        # Fallback to memory only
-        VERIFICATION_CODES[resend_data.email] = {
-            "code": new_verification_code,
-            "expires": datetime.utcnow() + timedelta(minutes=15),
-            "user_data": pending_verification
+        logger.error(f"Error fetching dashboard data: {e}")
+        return {
+            "summary": {"total_cases": 0, "high_risk_regions": 0, "alerts_count": 0},
+            "recent_activity": []
         }
-        print(f"⚠️ Using memory storage only: {str(e)}")
-    
-    # Send new verification email
-    background_tasks.add_task(
-        email_service.send_verification_email,
-        resend_data.email,
-        new_verification_code,
-        pending_verification["name"]
-    )
-    
-    print(f"🔑 DEBUG: New verification code for {resend_data.email}: {new_verification_code}")
-    
-    return {"message": "Verification code resent successfully"}
 
 # ========================================
 # USER PROFILE ENDPOINTS
@@ -1093,7 +1225,7 @@ async def sync_offline_data(request: Request, sync_data: SyncRequest, current_us
             await database.execute(query)
             processed += 1
         except Exception as e:
-            print(f"Error syncing item: {e}")
+            logger.error(f"Error syncing item: {e}")
     
     return {
         "message": "Sync completed",
