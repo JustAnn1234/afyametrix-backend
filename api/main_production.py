@@ -174,25 +174,17 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# CORS middleware - Production ready
+# CORS middleware - Fixed for development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        os.getenv("FRONTEND_URL", "http://localhost:3000"),
-        "https://afyametrix-frontend.netlify.app",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "https://your-production-domain.com"  # Add your production domain
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=[
-        "authorization",
-        "content-type", 
-        "x-requested-with",
-        "accept",
-        "origin",
-        "user-agent",
-        "cache-control"
-    ],
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
 )
 
 # ========================================
@@ -1511,8 +1503,8 @@ def get_health_allocations(
 
 @app.get("/api/health-intelligence/narrative")
 def get_health_narrative(
-    country:  str = Query(..., description="Country name (required)"),
-    region:   str = Query(..., description="Region name (required)"),
+    country: str = Query(..., description="Country name (required)"),
+    region: str = Query(..., description="Region name (required)"),
     language: str = Query("en", description="Language code: en/fr/sw")
 ):
     """
@@ -1522,60 +1514,56 @@ def get_health_narrative(
     """
     df = HEALTH_DATA['narratives'].copy()
     
-    if df.empty:
-        # Generate basic narrative from risk data
-        risk_df = HEALTH_DATA['regional_risk']
-        if risk_df.empty:
-            raise HTTPException(status_code=503, detail="Health narrative data not available")
-        
-        latest = risk_df['date'].max()
-        region_data = risk_df[
-            (risk_df['date'] == latest) &
-            (risk_df['country'].str.lower() == country.lower()) &
-            (risk_df['region'].str.lower() == region.lower())
+    # Always try to find pre-generated narrative first
+    if not df.empty:
+        match = df[
+            (df['country'].str.lower() == country.lower()) &
+            (df['region'].str.lower() == region.lower())
         ]
         
-        if len(region_data) == 0:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Region '{region}' in '{country}' not found"
-            )
-        
-        row = region_data.iloc[0]
-        return {
-            "country":  country,
-            "region":   region,
-            "language": language,
-            "narrative": (
-                f"Health status for {region}, {country}: "
-                f"Risk score {row['risk_score']:.0f}/100. "
-                f"Primary disease: {row.get('top_disease', 'Unknown')}. "
-                f"Total cases: {int(row.get('total_cases', 0)):,}. "
-                f"Active alerts: {int(row.get('active_alerts', 0))}."
-            )
-        }
+        if len(match) > 0:
+            # Found pre-generated narrative
+            row = match.iloc[0]
+            lang_col = f'narrative_{language}' if f'narrative_{language}' in row.index else 'narrative_en'
+            
+            return {
+                "country": country,
+                "region": region,
+                "language": language,
+                "risk_score": float(row.get('risk_score', 0)),
+                "narrative": row.get(lang_col, row.get('narrative_en', 'No narrative available'))
+            }
     
-    # Find matching region in narratives
-    match = df[
-        (df['country'].str.lower() == country.lower()) &
-        (df['region'].str.lower() == region.lower())
+    # No pre-generated narrative found, generate from risk data
+    risk_df = HEALTH_DATA['regional_risk']
+    if risk_df.empty:
+        raise HTTPException(status_code=503, detail="Health narrative data not available")
+    
+    latest = risk_df['date'].max()
+    region_data = risk_df[
+        (risk_df['date'] == latest) &
+        (risk_df['country'].str.lower() == country.lower()) &
+        (risk_df['region'].str.lower() == region.lower())
     ]
     
-    if len(match) == 0:
+    if len(region_data) == 0:
         raise HTTPException(
             status_code=404,
-            detail=f"Narrative for '{region}' in '{country}' not found"
+            detail=f"Region '{region}' in '{country}' not found"
         )
     
-    row      = match.iloc[0]
-    lang_col = f'narrative_{language}' if f'narrative_{language}' in row.index else 'narrative_en'
-    
+    row = region_data.iloc[0]
     return {
-        "country":   country,
-        "region":    region,
-        "language":  language,
-        "risk_score": float(row.get('risk_score', 0)),
-        "narrative":  row.get(lang_col, row.get('narrative_en', 'No narrative available'))
+        "country": country,
+        "region": region,
+        "language": language,
+        "narrative": (
+            f"Health status for {region}, {country}: "
+            f"Risk score {row['risk_score']:.0f}/100. "
+            f"Primary disease: {row.get('top_disease', 'Unknown')}. "
+            f"Total cases: {int(row.get('total_cases', 0)):,}. "
+            f"Active alerts: {int(row.get('active_alerts', 0))}."
+        )
     }
 
 @app.get("/api/health-intelligence/cross-border-alerts")
