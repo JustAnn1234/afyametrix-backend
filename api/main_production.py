@@ -445,6 +445,7 @@ async def register_user(request: Request, user: UserRegister, background_tasks: 
         
         await database.execute(
             verification_codes.insert().values(
+                id=str(uuid.uuid4()),  # Explicitly generate UUID
                 email=user.email,
                 code=verification_code,
                 expires_at=expires_at,
@@ -632,6 +633,7 @@ async def forgot_password(request: Request, forgot_data: ForgotPassword, backgro
         
         await database.execute(
             verification_codes.insert().values(
+                id=str(uuid.uuid4()),  # Explicitly generate UUID
                 email=reset_email_key,
                 code=reset_code,
                 expires_at=expires_at,

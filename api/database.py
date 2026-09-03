@@ -95,9 +95,9 @@ cases = Table(
 verification_codes = Table(
     "verification_codes",
     metadata,
-    Column("id", UUID(as_uuid=True), primary_key=True, default=uuid.uuid4), # FIX: Use UUID as PK
-    Column("email", String(255), nullable=False, index=True), # Indexed for fast lookups
-    Column("code", String(255), nullable=False), # Increased to 255 to allow hashing the OTP if desired
+    Column("id", UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
+    Column("email", String(255), nullable=False, index=True),
+    Column("code", String(6), nullable=False),  # Matches Supabase schema: VARCHAR(6)
     Column("expires_at", DateTime(timezone=True), nullable=False),
     Column("user_data", JSONB, nullable=False),
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
