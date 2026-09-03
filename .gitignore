@@ -7,3 +7,4 @@ models/saved/
 data/processed/africa_health_anomalies.csv
 data/processed/africa_health_risk_scored.csv
 data/raw/africa_health_simulated.csvgit add .
+.kiro
